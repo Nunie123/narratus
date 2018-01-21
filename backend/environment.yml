@@ -1,0 +1,9 @@
+name: narratus
+dependencies:
+  - python=3.6
+  - pip:
+    - Flask==0.12.2
+    - simplejson==3.11.1
+    - pytz==2017.3
+    - Flask-SQLAlchemy==2.3
+    - Flask-Migrate==2.1.1
