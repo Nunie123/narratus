@@ -7,3 +7,4 @@ dependencies:
     - pytz==2017.3
     - Flask-SQLAlchemy==2.3
     - Flask-Migrate==2.1.1
+    - flask-login==0.4.1

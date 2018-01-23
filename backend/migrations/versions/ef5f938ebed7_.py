@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: f17c3e55e89d
+Revision ID: ef5f938ebed7
 Revises: 
-Create Date: 2018-01-21 00:49:49.562098
+Create Date: 2018-01-23 02:28:18.851587
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'f17c3e55e89d'
+revision = 'ef5f938ebed7'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -30,13 +30,6 @@ def upgrade():
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_connection_label'), 'connection', ['label'], unique=True)
-    op.create_table('publication_recipient',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('first_name', sa.String(length=64), nullable=True),
-    sa.Column('last_name', sa.String(length=64), nullable=True),
-    sa.Column('email', sa.String(length=128), nullable=True),
-    sa.PrimaryKeyConstraint('id')
-    )
     op.create_table('usergroup',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=64), nullable=True),
@@ -61,43 +54,54 @@ def upgrade():
     )
     op.create_index(op.f('ix_user_email'), 'user', ['email'], unique=True)
     op.create_index(op.f('ix_user_username'), 'user', ['username'], unique=True)
+    op.create_table('contact',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('first_name', sa.String(length=64), nullable=True),
+    sa.Column('last_name', sa.String(length=64), nullable=True),
+    sa.Column('email', sa.String(length=128), nullable=True),
+    sa.Column('public', sa.Boolean(), nullable=True),
+    sa.Column('user_id', sa.Integer(), nullable=True),
+    sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_contact_user_id'), 'contact', ['user_id'], unique=False)
     op.create_table('query',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('label', sa.String(length=64), nullable=True),
     sa.Column('raw_sql', sa.Text(), nullable=True),
-    sa.Column('creator', sa.Integer(), nullable=True),
-    sa.ForeignKeyConstraint(['creator'], ['user.id'], ),
+    sa.Column('user_id', sa.Integer(), nullable=True),
+    sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_query_creator'), 'query', ['creator'], unique=False)
     op.create_index(op.f('ix_query_label'), 'query', ['label'], unique=True)
+    op.create_index(op.f('ix_query_user_id'), 'query', ['user_id'], unique=False)
     op.create_table('report',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('label', sa.String(length=64), nullable=True),
-    sa.Column('creator', sa.Integer(), nullable=True),
+    sa.Column('user_id', sa.Integer(), nullable=True),
     sa.Column('created_on', sa.DateTime(), nullable=True),
     sa.Column('last_published', sa.DateTime(), nullable=True),
     sa.Column('parameters', sa.Text(), nullable=True),
-    sa.ForeignKeyConstraint(['creator'], ['user.id'], ),
+    sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_report_creator'), 'report', ['creator'], unique=False)
     op.create_index(op.f('ix_report_label'), 'report', ['label'], unique=True)
+    op.create_index(op.f('ix_report_user_id'), 'report', ['user_id'], unique=False)
     op.create_table('chart',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('label', sa.String(length=64), nullable=True),
-    sa.Column('creator', sa.Integer(), nullable=True),
+    sa.Column('user_id', sa.Integer(), nullable=True),
     sa.Column('type', sa.String(length=128), nullable=True),
     sa.Column('parameters', sa.Text(), nullable=True),
     sa.Column('query_id', sa.Integer(), nullable=True),
     sa.Column('connection_id', sa.Integer(), nullable=True),
     sa.ForeignKeyConstraint(['connection_id'], ['connection.id'], ),
-    sa.ForeignKeyConstraint(['creator'], ['user.id'], ),
     sa.ForeignKeyConstraint(['query_id'], ['query.id'], ),
+    sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_chart_creator'), 'chart', ['creator'], unique=False)
     op.create_index(op.f('ix_chart_label'), 'chart', ['label'], unique=True)
+    op.create_index(op.f('ix_chart_user_id'), 'chart', ['user_id'], unique=False)
     op.create_table('publication',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('type', sa.String(length=128), nullable=True),
@@ -138,40 +142,41 @@ def upgrade():
     sa.ForeignKeyConstraint(['usergroup_id'], ['usergroup.id'], ),
     sa.PrimaryKeyConstraint('chart_id', 'usergroup_id')
     )
-    op.create_table('pub_recipient_list',
-    sa.Column('pub_recipient_id', sa.Integer(), nullable=False),
+    op.create_table('publication_recipients',
+    sa.Column('contact_id', sa.Integer(), nullable=False),
     sa.Column('publication_id', sa.Integer(), nullable=False),
-    sa.ForeignKeyConstraint(['pub_recipient_id'], ['publication_recipient.id'], ),
+    sa.ForeignKeyConstraint(['contact_id'], ['contact.id'], ),
     sa.ForeignKeyConstraint(['publication_id'], ['publication.id'], ),
-    sa.PrimaryKeyConstraint('pub_recipient_id', 'publication_id')
+    sa.PrimaryKeyConstraint('contact_id', 'publication_id')
     )
     # ### end Alembic commands ###
 
 
 def downgrade():
     # ### commands auto generated by Alembic - please adjust! ###
-    op.drop_table('pub_recipient_list')
+    op.drop_table('publication_recipients')
     op.drop_table('chart_perms')
     op.drop_table('report_perms')
     op.drop_table('query_perms')
     op.drop_index(op.f('ix_publication_report_id'), table_name='publication')
     op.drop_table('publication')
+    op.drop_index(op.f('ix_chart_user_id'), table_name='chart')
     op.drop_index(op.f('ix_chart_label'), table_name='chart')
-    op.drop_index(op.f('ix_chart_creator'), table_name='chart')
     op.drop_table('chart')
+    op.drop_index(op.f('ix_report_user_id'), table_name='report')
     op.drop_index(op.f('ix_report_label'), table_name='report')
-    op.drop_index(op.f('ix_report_creator'), table_name='report')
     op.drop_table('report')
+    op.drop_index(op.f('ix_query_user_id'), table_name='query')
     op.drop_index(op.f('ix_query_label'), table_name='query')
-    op.drop_index(op.f('ix_query_creator'), table_name='query')
     op.drop_table('query')
+    op.drop_index(op.f('ix_contact_user_id'), table_name='contact')
+    op.drop_table('contact')
     op.drop_index(op.f('ix_user_username'), table_name='user')
     op.drop_index(op.f('ix_user_email'), table_name='user')
     op.drop_table('user')
     op.drop_table('connection_perms')
     op.drop_index(op.f('ix_usergroup_name'), table_name='usergroup')
     op.drop_table('usergroup')
-    op.drop_table('publication_recipient')
     op.drop_index(op.f('ix_connection_label'), table_name='connection')
     op.drop_table('connection')
     # ### end Alembic commands ###
