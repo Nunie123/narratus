@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: ef5f938ebed7
+Revision ID: 938242535e70
 Revises: 
-Create Date: 2018-01-23 02:28:18.851587
+Create Date: 2018-01-26 00:56:55.179765
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'ef5f938ebed7'
+revision = '938242535e70'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -30,6 +30,15 @@ def upgrade():
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_connection_label'), 'connection', ['label'], unique=True)
+    op.create_table('user',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('username', sa.String(length=64), nullable=True),
+    sa.Column('email', sa.String(length=120), nullable=True),
+    sa.Column('password_hash', sa.String(length=128), nullable=True),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_user_email'), 'user', ['email'], unique=True)
+    op.create_index(op.f('ix_user_username'), 'user', ['username'], unique=True)
     op.create_table('usergroup',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=64), nullable=True),
@@ -43,17 +52,6 @@ def upgrade():
     sa.ForeignKeyConstraint(['usergroup_id'], ['usergroup.id'], ),
     sa.PrimaryKeyConstraint('connection_id', 'usergroup_id')
     )
-    op.create_table('user',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('username', sa.String(length=64), nullable=True),
-    sa.Column('email', sa.String(length=120), nullable=True),
-    sa.Column('password_hash', sa.String(length=128), nullable=True),
-    sa.Column('usergroup_id', sa.Integer(), nullable=True),
-    sa.ForeignKeyConstraint(['usergroup_id'], ['usergroup.id'], ),
-    sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_user_email'), 'user', ['email'], unique=True)
-    op.create_index(op.f('ix_user_username'), 'user', ['username'], unique=True)
     op.create_table('contact',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('first_name', sa.String(length=64), nullable=True),
@@ -87,6 +85,13 @@ def upgrade():
     )
     op.create_index(op.f('ix_report_label'), 'report', ['label'], unique=True)
     op.create_index(op.f('ix_report_user_id'), 'report', ['user_id'], unique=False)
+    op.create_table('user_perms',
+    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('usergroup_id', sa.Integer(), nullable=False),
+    sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
+    sa.ForeignKeyConstraint(['usergroup_id'], ['usergroup.id'], ),
+    sa.PrimaryKeyConstraint('user_id', 'usergroup_id')
+    )
     op.create_table('chart',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('label', sa.String(length=64), nullable=True),
@@ -163,6 +168,7 @@ def downgrade():
     op.drop_index(op.f('ix_chart_user_id'), table_name='chart')
     op.drop_index(op.f('ix_chart_label'), table_name='chart')
     op.drop_table('chart')
+    op.drop_table('user_perms')
     op.drop_index(op.f('ix_report_user_id'), table_name='report')
     op.drop_index(op.f('ix_report_label'), table_name='report')
     op.drop_table('report')
@@ -171,12 +177,12 @@ def downgrade():
     op.drop_table('query')
     op.drop_index(op.f('ix_contact_user_id'), table_name='contact')
     op.drop_table('contact')
-    op.drop_index(op.f('ix_user_username'), table_name='user')
-    op.drop_index(op.f('ix_user_email'), table_name='user')
-    op.drop_table('user')
     op.drop_table('connection_perms')
     op.drop_index(op.f('ix_usergroup_name'), table_name='usergroup')
     op.drop_table('usergroup')
+    op.drop_index(op.f('ix_user_username'), table_name='user')
+    op.drop_index(op.f('ix_user_email'), table_name='user')
+    op.drop_table('user')
     op.drop_index(op.f('ix_connection_label'), table_name='connection')
     op.drop_table('connection')
     # ### end Alembic commands ###
