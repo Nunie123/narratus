@@ -7,16 +7,23 @@ from flask_login import UserMixin
 def load_user(id):
     return User.query.get(int(id))
 
+user_perms = db.Table('user_perms',
+    db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+    db.Column('usergroup_id', db.Integer, db.ForeignKey('usergroup.id'), primary_key=True)
+)
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(64), index=True, unique=True)
     email = db.Column(db.String(120), index=True, unique=True)
     password_hash = db.Column(db.String(128))
-    usergroup_id = db.Column(db.Integer, db.ForeignKey('usergroup.id'))
     queries = db.relationship('Query', backref='creator', lazy='dynamic')
     charts = db.relationship('Chart', backref='creator', lazy='dynamic')
     reports = db.relationship('Report', backref='creator', lazy='dynamic')
     contacts = db.relationship('Contact', backref='creator', lazy='dynamic')
+    usergroups = db.relationship("Usergroup",
+                    secondary=user_perms,
+                    backref="users")
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -30,7 +37,6 @@ class User(UserMixin, db.Model):
 class Usergroup(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(64), index=True, unique=True)
-    users = db.relationship('User', backref='usergroup', lazy='dynamic')
 
     def __repr__(self):
         return '<Usergroup id:{} name:{}>'.format(self.id, self.name)
