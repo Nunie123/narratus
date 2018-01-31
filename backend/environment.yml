@@ -8,3 +8,4 @@ dependencies:
     - Flask-SQLAlchemy==2.3
     - Flask-Migrate==2.1.1
     - flask-login==0.4.1
+    - flask-wtf==0.14

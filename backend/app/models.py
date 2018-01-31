@@ -41,6 +41,9 @@ class Usergroup(db.Model):
     def __repr__(self):
         return '<Usergroup id:{} name:{}>'.format(self.id, self.name)
 
+def get_usergroups_for_user(user):
+    Session.query(user_perms).filter(user_perms.c.user_id==user.id).all()
+
 connection_perms = db.Table('connection_perms',
     db.Column('connection_id', db.Integer, db.ForeignKey('connection.id'), primary_key=True),
     db.Column('usergroup_id', db.Integer, db.ForeignKey('usergroup.id'), primary_key=True)
@@ -59,6 +62,13 @@ class Connection(db.Model):
     usergroups = db.relationship("Usergroup",
                     secondary=connection_perms,
                     backref="connections")
+
+    def get_connections_by_usergroups(usergroups):
+        pass
+
+    def get_permitted_connections(user):
+        pass
+
 
     def __repr__(self):
         return '<Connection {}'.format(self.label)
