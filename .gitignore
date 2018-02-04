@@ -14,6 +14,8 @@
 .env.test.local
 .env.production.local
 config.ini
+*.db
+__pycache__/
 
 npm-debug.log*
 yarn-debug.log*

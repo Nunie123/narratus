@@ -30,6 +30,78 @@ class User(UserMixin, db.Model):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+# returns list of usergroup ids
+    def get_usergroups(self):
+        ug_tuple_list = db.session.query(user_perms).filter(user_perms.c.user_id==self.id).all()
+        return list(map(lambda tup: tup[1], ug_tuple_list))
+
+# takes table, returns list of ids
+    def get_authorized_ids(self, table):
+        usergroup_ids = self.get_usergroups()
+        conn_tuple_list = db.session.query(table).filter(table.c.usergroup_id.in_(usergroup_ids)).all()
+        return list(set(map(lambda tup: tup[1], conn_tuple_list)))
+
+# returns list of connection dictionaries
+    def get_connections(self):
+        connection_ids = self.get_authorized_ids(connection_perms)
+        connection_objects_list = Connection.query.filter(Connection.id.in_(connection_ids)).all()
+        return list(map(lambda obj: {'label': obj.label,
+                                    'db_type': obj.db_type,
+                                    'host': obj.host,
+                                    'port': obj.port,
+                                    'username': obj.username,
+                                    'password': obj.password,
+                                    'db_name': obj.database_name,
+                                    }, connection_objects_list))
+
+# returns list of query dictionaries
+    def get_queries(self):
+        query_ids = self.get_authorized_ids(query_perms)
+        query_objects_list = Query.query.filter(Query.id.in_(query_ids)).all()
+        return list(map(lambda obj: {'label': obj.label,
+                                    'raw_sql': obj.raw_sql,
+                                    'creator_id': obj.user_id,
+                                    }, query_objects_list))
+
+# returns list of chart dictionaries
+    def get_charts(self):
+        chart_ids = self.get_authorized_ids(chart_perms)
+        chart_objects_list = Chart.query.filter(Chart.id.in_(chart_ids)).all()
+        return list(map(lambda obj: {'label': obj.label,
+                                    'creator_id': obj.user_id,
+                                    'type':obj.type,
+                                    'parameters':obj.parameters,
+                                    'query_id':obj.query_id,
+                                    'connection_id':obj.connection_id,
+                                    }, chart_objects_list))
+
+# returns list of report dictionaries
+    def get_reports(self):
+        report_ids = self.get_authorized_ids(report_perms)
+        report_objects_list = Report.query.filter(Report.id.in_(report_ids)).all()
+        return list(map(lambda obj: {'label': obj.label,
+                                    'creator_id': obj.user_id,
+                                    'created_on':obj.created_on,
+                                    'last_published':obj.last_published,
+                                    'parameters':obj.parameters,
+                                    'publications':obj.get_publications(),
+                                    }, report_objects_list))
+
+# returns list of contact dictionaries
+    def get_contacts(self):
+        public_contacts = Contact.query.filter(Contact.public==True).all()
+        created_contacts = Contact.query.filter(Contact.user_id==self).all()
+        report_ids = self.get_authorized_ids(report_perms)
+        reports = Report.query.filter(Report.id.in_(report_ids)).all()
+        report_publications = list(set(reduce(lambda x,y: x.publications + y.publications, reports)))
+        report_contacts = list(set(reduce(lambda x,y: x.contact_ids + y.contact_ids, report_publications)))
+        return list(map(lambda obj: {'first_name': obj.first_name,
+                                    'last_name': obj.last_name,
+                                    'email':obj.email,
+                                    'public':obj.public,
+                                    'creator_id':obj.user.id,
+                                    }, public_contacts + created_contacts + report_contacts))
+
 
     def __repr__(self):
         return '<User {}>'.format(self.username)
@@ -41,8 +113,6 @@ class Usergroup(db.Model):
     def __repr__(self):
         return '<Usergroup id:{} name:{}>'.format(self.id, self.name)
 
-def get_usergroups_for_user(user):
-    Session.query(user_perms).filter(user_perms.c.user_id==user.id).all()
 
 connection_perms = db.Table('connection_perms',
     db.Column('connection_id', db.Integer, db.ForeignKey('connection.id'), primary_key=True),
@@ -62,13 +132,6 @@ class Connection(db.Model):
     usergroups = db.relationship("Usergroup",
                     secondary=connection_perms,
                     backref="connections")
-
-    def get_connections_by_usergroups(usergroups):
-        pass
-
-    def get_permitted_connections(user):
-        pass
-
 
     def __repr__(self):
         return '<Connection {}'.format(self.label)
@@ -128,8 +191,25 @@ class Report(db.Model):
                     secondary=report_perms,
                     backref="reports")
 
+    def get_publications(self):
+        return list(map(lambda obj: {'type': obj.type,
+                                    'frequency': obj.frequency,
+                                    'monday':obj.monday,
+                                    'tuesday':obj.tuesday,
+                                    'wednesday':obj.wednesday,
+                                    'thursday':obj.thursday,
+                                    'friday':obj.friday,
+                                    'saturday':obj.saturday,
+                                    'sunday':obj.sunday,
+                                    'day_of_month':obj.day_of_month,
+                                    'publication_time':obj.pub_time,
+                                    'report_id':obj.report_id,
+                                    'notification_or_attachment':obj.notification_or_attachment,
+                                    'recipients':obj.get_recipients()
+                                    }, self.publications))
+
     def __repr__(self):
-        return '<Report {}'.format(self.label)
+        return '<Report {}>'.format(self.label)
 
 publication_recipients = db.Table('publication_recipients',
     db.Column('contact_id', db.Integer, db.ForeignKey('contact.id'), primary_key=True),
@@ -154,6 +234,14 @@ class Publication(db.Model):
     contact_ids = db.relationship("Contact",
                     secondary=publication_recipients,
                     backref="publications")
+
+    def get_recipients(self):
+        return list(map(lambda obj: {'first_name': obj.first_name,
+                                    'last_name': obj.last_name,
+                                    'email':obj.email,
+                                    'public':obj.public,
+                                    'creator_id':obj.user.id,
+                                    }, self.contact_ids))
 
     def __repr__(self):
         return '<Publication {} for report {}'.format(self.type, self.report_id)
