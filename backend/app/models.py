@@ -30,16 +30,25 @@ class User(UserMixin, db.Model):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
 # returns list of usergroup ids
-    def get_usergroups(self):
+    def get_usergroup_ids(self):
         ug_tuple_list = db.session.query(user_perms).filter(user_perms.c.user_id==self.id).all()
         return list(map(lambda tup: tup[1], ug_tuple_list))
 
 # takes table, returns list of ids
     def get_authorized_ids(self, table):
-        usergroup_ids = self.get_usergroups()
+        usergroup_ids = self.get_usergroup_ids()
         conn_tuple_list = db.session.query(table).filter(table.c.usergroup_id.in_(usergroup_ids)).all()
         return list(set(map(lambda tup: tup[1], conn_tuple_list)))
+
+# returns list of usergroup dictionaries
+    def get_usergroups(self):
+        usergroup_ids = self.get_usergroup_ids()
+        usergroup_objects_list = Usergroup.query.filter(Usergroup.id.in_(usergroup_ids)).all()
+        return list(map(lambda obj: {'id': obj.id,
+                                    'name': obj.name,
+                                    }, usergroup_objects_list))
 
 # returns list of connection dictionaries
     def get_connections(self):
@@ -109,6 +118,18 @@ class User(UserMixin, db.Model):
 class Usergroup(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(64), index=True, unique=True)
+    users = db.relationship("User",
+                    secondary=user_perms,
+                    backref="usergroups")
+# returns array or users associated with usergroup
+    def get_members(self):
+        user_ids = list(map(lambda obj: obj.id, self.users))
+        user_objects_list = User.query.filter(User.id.in_(user_ids)).all()
+        return list(map(lambda obj: {
+                                    'user_id': obj.id,
+                                    'username': obj.username,
+                                    'email': obj.email,
+                                    }))
 
     def __repr__(self):
         return '<Usergroup id:{} name:{}>'.format(self.id, self.name)

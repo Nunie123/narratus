@@ -1,5 +1,5 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, BooleanField, SubmitField
+from wtforms import StringField, PasswordField, BooleanField, SubmitField, SelectField, IntegerField
 from wtforms.validators import ValidationError, DataRequired, Email, EqualTo
 from wtforms.fields.html5 import EmailField
 from app.models import User
@@ -29,3 +29,26 @@ class RegistrationForm(FlaskForm):
         user = User.query.filter_by(email=email.data).first()
         if user is not None:
             raise ValidationError('Email address already in use.')
+
+class ConnectionForm(FlaskForm):
+    label = StringField('Connection Name')
+    db_type = SelectField('Database Type', choices=[(postgresql, Postgresql), (sqlite, SQLite)])
+    host = StringField('Host')
+    port = IntegerField('Port')
+    username = StringField('Username')
+    
+
+class QueryForm(FlaskForm):
+    pass
+
+class ChartForm(FlaskForm):
+    pass
+
+class ReportForm(FlaskForm):
+    pass
+
+class PublicationForm(FlaskForm):
+    pass
+
+class ContactForm(FlaskForm):
+    pass
