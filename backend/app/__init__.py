@@ -1,5 +1,6 @@
-from flask import Flask
 from configparser import ConfigParser
+from flask import Flask
+from flask_jwt_extended import JWTManager
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 

@@ -1,9 +1,10 @@
+import json
 from flask import request, jsonify
 from flask_jwt_extended import (
     JWTManager, jwt_required, create_access_token, get_jwt_identity
 )
 from app.models import (
-    User, Usergroup, Connection, Query, Chart, Report, Publication,
+    User, Usergroup, Connection, SqlQuery, Chart, Report, Publication,
     Contact, TokenBlacklist
 )
 from app import app, jwt, db
@@ -23,22 +24,22 @@ def user_identity_lookup(user):
 @jwt.token_in_blacklist_loader
 def check_if_token_in_blacklist(decrypted_token):
     jti = decrypted_token['jti']
-    blacklist_objects = Report.query.filter(Report.id.in_(report_ids)).all()
+    blacklist_objects = TokenBlacklist.query.all()
     blacklist = set(map(lambda obj: obj.jti, blacklist_objects))
     return jti in blacklist
 
-@app.route('/')
-def home():
-    return 'root endpoint'
+@app.route('/', methods=['GET'])
+def test():
+    return jsonify(msg='this is working', success=1), 200
 
-
-@app.route('/login', methods=['POST'])
+@app.route('/api/login', methods=['POST'])
 def login():
     if not request.is_json:
         return jsonify(msg="Missing JSON in request", success=0), 400
 
     username = request.json.get('username', None)
     password = request.json.get('password', None)
+
     if not username:
         return jsonify(msg="Missing username parameter", success=0), 400
     if not password:
@@ -48,18 +49,19 @@ def login():
     if user is None or not user.check_password(password):
         return jsonify(msg="Bad username or password", success=0), 401
 
-    # Identity can be any data that is json serializable
     access_token = create_access_token(identity=user)
     return jsonify(access_token=access_token
                     , msg="Login complete."
                     , success=1), 200
 
 # Endpoint for revoking the current users access token
-@app.route('/api/logout', methods=['DELETE'])
+@app.route('/api/logout', methods=['POST'])
 @jwt_required
 def logout():
     try:
+        print('start')
         jti = get_raw_jwt()['jti']
+        print(jti)
         blacklist_jti = TokenBlacklist(jti=jti)
         db.session.add(blacklist_jti)
         db.session.commit()
@@ -67,7 +69,7 @@ def logout():
     except:
         return jsonify([{"msg":"Logout failed.", "success":"0"}]), 400
 
-@app.route('/create_user', methods=['POST'])
+@app.route('/api/create_user', methods=['POST'])
 @jwt_required
 def create_user():
     if not request.is_json:
@@ -112,7 +114,7 @@ def create_user():
         return jsonify([{"msg":"Error occured, user NOT registered.", "success":"0"}]), 400
 
 
-@app.route('/edit_user', methods=['PATCH'])
+@app.route('/api/edit_user', methods=['PATCH'])
 @jwt_required
 def edit_user():
     if not request.is_json:
@@ -173,7 +175,7 @@ def edit_user():
     except:
         return jsonify([{"msg":"Error occured, user NOT registered.", "success":"0"}]), 400
 
-@app.route('/delete_user', methods=['DELETE'])
+@app.route('/api/delete_user', methods=['POST'])
 @jwt_required
 def delete_user():
     if not request.is_json:
@@ -269,7 +271,7 @@ def edit_usergroup():
     chart_ids = list(request.json.get('charts', []))
     report_ids = list(request.json.get('reports', []))
     claims = get_jwt_claims()
-    success_text = 'edited'
+    success_text == 'edited'
 
     # Admin may add anyone to usergroup.  Standard user may only add themself.
     if claims['role'] not in ('admin', 'superuser'):
@@ -287,7 +289,7 @@ def edit_usergroup():
         db.session.add(ug)
         db.session.commit()
         usergroup_id = Usergroup.query.filter(Usergroup.name == name).first().id
-        success_text = 'created'
+        success_text == 'created'
     # creating new usergroup shoudl be done with POST http method
     elif not usergroup_id and request.method != 'POST':
         msg = 'No usergroup_id provided.  To create new usergroup, use POST method.'
@@ -323,7 +325,7 @@ def edit_usergroup():
     except:
         return jsonify(msg='Error: usergroup not {}.'.format(success_text), success=0), 400
 
-@app.route('/api/delete_usergroup', methods=['DELETE'])
+@app.route('/api/delete_usergroup', methods=['POST'])
 @jwt_required
 def delete_usergroup():
     if not request.is_json:
@@ -331,7 +333,7 @@ def delete_usergroup():
 
     usergroup_id = request.json.get('usergroup_id', None)
     claims = get_jwt_claims()
-    usergroup = Usergroup.query.filter(Usergroup.id = usergroup_id)
+    usergroup = Usergroup.query.filter(Usergroup.id == usergroup_id).first()
 
     #validate usergroup_id
     if not usergroup_id:
@@ -397,7 +399,7 @@ def edit_connection():
     usergroup_ids = list(request.json.get('usergroup_ids', []))
     connection_dict = request.get_json()[0]
     claims = get_jwt_claims()
-    success_text = 'edited'
+    success_text == 'edited'
     connection = Connection.query.filter(Connection.id == connection_id).first()
 
     # viewer users cannot create new connections
@@ -424,7 +426,7 @@ def edit_connection():
         usergroup_id_check = validators.validate_usergroup_ids(usergroup_ids)
         if not usergroup_id_check['validated']:
             return jsonify(msg=usergroup_id_check['msg'], success=0), 400
-        success_text = 'added'
+        success_text == 'added'
         connection = Connection()
 
     connection.label = connection_dict.get('label', connection.label)
@@ -436,14 +438,14 @@ def edit_connection():
     connection.database_name = connection_dict.get('database_name', connection.database_name)
     connection.usergroups.append(usergroup_ids)
     try:
-        if success_text = 'added': db.session.add(connection)
+        if success_text == 'added': db.session.add(connection)
         db.session.commit()
         return jsonify(msg='Connection successfully {}.'.format(success_text), success=1), 200
     except:
         return jsonify(msg='Error: Connection not {}'.format(success_text), success=0), 400
 
 
-@app.route('/api/delete_connection', methods=['DELETE'])
+@app.route('/api/delete_connection', methods=['POST'])
 @jwt_required
 def delete_connection():
     if not request.is_json:
@@ -451,7 +453,7 @@ def delete_connection():
 
     connection_id = request.json.get('connection_id', None)
     claims = get_jwt_claims()
-    connection = Connection.query.filter(Connection.id = connection_id)
+    connection = Connection.query.filter(Connection.id == connection_id)
 
     #validate connection_id
     if not connection_id:
@@ -510,7 +512,7 @@ def edit_query():
     usergroup_ids = list(request.json.get('usergroup_ids', []))
     query_dict = request.get_json()[0]
     claims = get_jwt_claims()
-    success_text = 'edited'
+    success_text == 'edited'
     query = Query.query.filter(Query.id == query_id).first()
 
     # viewer users cannot create new queries
@@ -540,7 +542,7 @@ def edit_query():
         usergroup_id_check = validators.validate_usergroup_ids(usergroup_ids)
         if not usergroup_id_check['validated']:
             return jsonify(msg=usergroup_id_check['msg'], success=0), 400
-        success_text = 'added'
+        success_text == 'added'
         query = Query()
 
     query.label = query_dict.get('label', query.label)
@@ -548,14 +550,14 @@ def edit_query():
     query.user_id = query_dict.get('creator', query.user_id)
     query.usergroups.append(usergroup_ids)
     try:
-        if success_text = 'added': db.session.add(query)
+        if success_text == 'added': db.session.add(query)
         db.session.commit()
         return jsonify(msg='Query successfully {}.'.format(success_text), success=1), 200
     except:
         return jsonify(msg='Error: Query not {}'.format(success_text), success=0), 400
 
 
-@app.route('/api/delete_query', methods=['DELETE'])
+@app.route('/api/delete_query', methods=['POST'])
 @jwt_required
 def delete_query():
     if not request.is_json:
@@ -563,7 +565,7 @@ def delete_query():
 
     query_id = request.json.get('query_id', None)
     claims = get_jwt_claims()
-    query = Query.query.filter(Query.id = query_id)
+    query = Query.query.filter(Query.id == query_id)
 
     #validate connection_id
     if not query_id:
@@ -622,7 +624,7 @@ def edit_chart():
     usergroup_ids = list(request.json.get('usergroup_ids', []))
     chart_dict = request.get_json()[0]
     claims = get_jwt_claims()
-    success_text = 'edited'
+    success_text == 'edited'
     chart = Chart.query.filter(Chart.id == chart_id).first()
 
     # viewer users cannot create new charts
@@ -652,7 +654,7 @@ def edit_chart():
         usergroup_id_check = validators.validate_usergroup_ids(usergroup_ids)
         if not usergroup_id_check['validated']:
             return jsonify(msg=usergroup_id_check['msg'], success=0), 400
-        success_text = 'added'
+        success_text == 'added'
         chart = Chart()
 
     chart.label = query_dict.get('label', chart.label)
@@ -663,15 +665,39 @@ def edit_chart():
     chart.connection_id = query_dict.get('label', chart.connection_id)
     chart.usergroups.append(usergroup_ids)
     try:
-        if success_text = 'added': db.session.add(chart)
+        if success_text == 'added': db.session.add(chart)
         db.session.commit()
         return jsonify(msg='Chart successfully {}.'.format(success_text), success=1), 200
     except:
         return jsonify(msg='Error: Chart not {}'.format(success_text), success=0), 400
 
-@app.route('/api/delete_chart', methods=['DELETE'])
+@app.route('/api/delete_chart', methods=['POST'])
 @jwt_required
 def delete_chart():
+    if not request.is_json:
+        return jsonify(msg="Missing JSON in request", success=0), 400
+
+    chart_id = request.json.get('chart_id', None)
+    claims = get_jwt_claims()
+    chart = Chart.query.filter(Chart.id == chart_id).first()
+
+    #validate chart_id
+    if not chart_id:
+        return jsonify(msg='Query ID not provided.', success=0), 400
+    if not chart:
+        return jsonify(msg='Query not recoginized.', success=0), 400
+
+    # viewer users cannot delete chart
+    if claims['role'] == 'viewer':
+        msg = 'Current user does not have permission to delete charts.'
+        return jsonify(msg=msg, success=0), 401
+
+    try:
+        db.session.delete(chart)
+        db.session.commit()
+        return jsonify(msg='Chart deleted.', success=1), 200
+    except:
+        return jsonify(msg='Error: Chart not deleted.', success=0), 400
 
 @app.route('/api/get_all_reports', methods=['GET'])
 @jwt_required
@@ -711,7 +737,7 @@ def edit_report():
     usergroup_ids = list(request.json.get('usergroup_ids', []))
     report_dict = request.get_json()[0]
     claims = get_jwt_claims()
-    success_text = 'edited'
+    success_text == 'edited'
     report = Report.query.filter(report.id == report_id).first()
     # publication_dict = report_dict['publication']
     # recipients_id_list = list(puplication_dict['recipient_ids'])
@@ -749,7 +775,7 @@ def edit_report():
             recipients_check = validators.validate_contact_exists(recipient_id)
             if not recipients_check['validated']:
                 return jsonify(msg=recipients_check['msg'], success=0), 400
-        success_text = 'added'
+        success_text == 'added'
         report = Report()
 
 
@@ -762,28 +788,50 @@ def edit_report():
     report.connection_id = query_dict.get('label', report.connection_id)
     report.usergroups.append(usergroup_ids)
     try:
-        if success_text = 'added': db.session.add(report)
+        if success_text == 'added': db.session.add(report)
         db.session.commit()
         return jsonify(msg='report successfully {}.'.format(success_text), success=1), 200
     except:
         return jsonify(msg='Error: report not {}'.format(success_text), success=0), 400
 
 
-@app.route('/api/delete_report', methods=['DELETE'])
+@app.route('/api/delete_report', methods=['POST'])
 @jwt_required
 def delete_report():
+    if not request.is_json:
+        return jsonify(msg="Missing JSON in request", success=0), 400
 
-@app.route('/api/get_all_publications_for_report', methods=['DELETE'])
-@jwt_required
-def get_all_publications_for_report():
+    report_id = request.json.get('report_id', None)
+    claims = get_jwt_claims()
+    report = Report.query.filter(Report.id == report_id).first()
 
-@app.route('/api/edit_publication', methods=['DELETE'])
+    #validate report_id
+    if not report_id:
+        return jsonify(msg='Report ID not provided.', success=0), 400
+    if not report:
+        return jsonify(msg='Report not recoginized.', success=0), 400
+
+    # viewer users cannot delete connections
+    if claims['role'] == 'viewer':
+        msg = 'Current user does not have permission to delete reports.'
+        return jsonify(msg=msg, success=0), 401
+
+    try:
+        db.session.delete(report)
+        db.session.commit()
+        return jsonify(msg='Report deleted.', success=1), 200
+    except:
+        return jsonify(msg='Error: Report not deleted.', success=0), 400
+
+@app.route('/api/edit_publication', methods=['PUT', 'POST'])
 @jwt_required
 def edit_publication():
+    pass
 
-@app.route('/api/delete_publication', methods=['DELETE'])
+@app.route('/api/delete_publication', methods=['POST'])
 @jwt_required
 def delete_publication():
+    pass
 
 @app.route('/api/get_all_contacts', methods=['GET'])
 @jwt_required
@@ -817,7 +865,9 @@ def get_user_contacts():
 @app.route('/api/edit_contact', methods=['POST', 'PATCH'])
 @jwt_required
 def edit_contact():
+    pass
 
-@app.route('/api/delete_contact', methods=['DELETE'])
+@app.route('/api/delete_contact', methods=['POST'])
 @jwt_required
 def delete_contact():
+    pass

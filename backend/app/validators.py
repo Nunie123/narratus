@@ -11,13 +11,13 @@ def validate_required_fields(required_fields_list, provided_fields_dict):
     return {'validated':True}
 
 def validate_user_exists(user_id):
-    if not User.query.filter(User.id == user_id).first()
+    if not User.query.filter(User.id == user_id).first():
         msg = 'User not recognized.'
         return {'validated':False, 'msg':'{} is required.'.format(field)}
     return {'validated':True}
 
 def validate_contact_exists(contact_id):
-    if not Contact.query.filter(Contact.id == contact_id).first()
+    if not Contact.query.filter(Contact.id == contact_id).first():
         msg = 'Contact not recognized.'
         return {'validated':False, 'msg':'{} is required.'.format(field)}
     return {'validated':True}
