@@ -29,7 +29,7 @@ def validate_username(username):
         return {'validated':False, 'msg':'Username is not unique.'}
     if not re.match("^[a-zA-Z0-9]+$",username):
         return {'validated':False, 'msg':'Username can only contain numbers and letters.'}
-    if 5 > len(username) > 15:
+    if 5 > len(username) or len(username) > 15:
         return {'validated':False, 'msg':'Username must be between 5 and 15 characters.'}
     return {'validated':True}
 
@@ -44,15 +44,15 @@ def validate_password(password):
     if not password:
         return {'validated':False, 'msg':'Password not provided.'}
     if not re.match('\d.*[A-Z]|[A-Z].*\d', password):
-        return {'validated':False, 'msg':'Password must contain one capital leeter ane one number.'}
-    if 8 > len(username) > 50:
+        return {'validated':False, 'msg':'Password must contain one capital letter ane one number.'}
+    if 8 > len(password) or len(password)> 50:
         return {'validated':False, 'msg':'Password must be between 8 and 50 characters.'}
     return {'validated':True}
 
 def validate_role(role):
-    if not password:
+    if not role:
         return {'validated':False, 'msg':'Role not provided.'}
-    if role not in ('standard', 'admin'):
+    if role not in ('viewer', 'writer', 'admin'):
         return {'validated':False, 'msg':'Invalid role type.'}
     return {'validated':True}
 

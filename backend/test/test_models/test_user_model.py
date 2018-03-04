@@ -107,7 +107,7 @@ class UserModelTest(TestCase):
         assert len(authorized_ids) == 1
         assert isinstance(authorized_ids[0], int)
 
-    def test_get_usergroups(self):
+    def test_get_dicts_from_usergroups(self):
         usergroup1 = Usergroup(label='group1')
         usergroup2 = Usergroup(label='group2')
         usergroup3 = Usergroup(label='group3')
@@ -118,7 +118,7 @@ class UserModelTest(TestCase):
         db.session.add(usergroup2, usergroup3)
         db.session.commit()
 
-        usergroups = user.get_usergroups()
+        usergroups = user.get_dicts_from_usergroups()
 
         assert len(usergroups) == 2
         assert isinstance(usergroups[0], dict)

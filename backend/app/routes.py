@@ -1,7 +1,8 @@
 import json
 from flask import request, jsonify
 from flask_jwt_extended import (
-    JWTManager, jwt_required, create_access_token, get_jwt_identity
+    JWTManager, jwt_required, create_access_token, get_jwt_identity, get_raw_jwt
+    , get_jwt_claims
 )
 from app.models import (
     User, Usergroup, Connection, SqlQuery, Chart, Report, Publication,
@@ -9,6 +10,7 @@ from app.models import (
 )
 from app import app, jwt, db
 import app.validators as validators
+from app import helper_functions as helpers
 
 @jwt.user_claims_loader
 def add_claims_to_access_token(user):
@@ -41,9 +43,9 @@ def login():
     password = request.json.get('password', None)
 
     if not username:
-        return jsonify(msg="Missing username parameter", success=0), 400
+        return jsonify(msg="Missing username parameter", success=0), 401
     if not password:
-        return jsonify(msg="Missing password parameter", success=0), 400
+        return jsonify(msg="Missing password parameter", success=0), 401
     user = User.query.filter(User.username == username).first()
 
     if user is None or not user.check_password(password):
@@ -59,9 +61,7 @@ def login():
 @jwt_required
 def logout():
     try:
-        print('start')
         jti = get_raw_jwt()['jti']
-        print(jti)
         blacklist_jti = TokenBlacklist(jti=jti)
         db.session.add(blacklist_jti)
         db.session.commit()
@@ -69,9 +69,10 @@ def logout():
     except:
         return jsonify([{"msg":"Logout failed.", "success":"0"}]), 400
 
-@app.route('/api/create_user', methods=['POST'])
+# ew user created if no user_id provided
+@app.route('/api/edit_user', methods=['POST', 'PATCH'])
 @jwt_required
-def create_user():
+def edit_user():
     if not request.is_json:
         return jsonify(msg="Missing JSON in request", success=0), 400
 
@@ -80,10 +81,21 @@ def create_user():
     if claims['role'] not in ('admin', 'superuser'):
         return jsonify(msg="User must have admin priviledges to create new users", success=0), 401
 
+
+    user_id = request.json.get('user_id', None)
     username = request.json.get('username', None)
     email = request.json.get('email', None)
     password = request.json.get('password', None)
     role = request.json.get('role', None)
+    usergroup_ids = list(request.json.get('usergroup_ids', []))
+    user = helpers.get_record_from_id(User, user_id)
+    usergroups = list(map(lambda id: helpers.get_record_from_id(Usergroup, id), usergroup_ids))
+    success_text = 'edited'
+
+    # if user id is provided, check to make sure it exists in the db
+    if user_id and not user:
+        msg = 'Provided user_id not found.'
+        return jsonify(msg=msg, success=0), 400
 
     # validating input
     username_check = validators.validate_username(username)
@@ -95,85 +107,31 @@ def create_user():
     password_check = validators.validate_password(password)
     if not password_check['validated']:
         return jsonify(msg=password_check['msg'], success=0), 400
+    role_check = validators.validate_role(role)
     if not role_check['validated']:
         return jsonify(msg=role_check['msg'], success=0), 400
 
-    # adding user to database and creating usergroup containing just that user.
-    try:
-        user = User(username=username, email=email, role=role)
-        user.set_password(password)
-        db.session.add(user)
-        ug = Usergroup(name='personal_{}'.format(username))
-        db.session.add(ug)
-        db.session.commit()
-        user = User.query.filted(User.username == username).first()
-        usergroup_id = Usergroup.query.filter(Usergroup.name == 'personal_{}'.format(username)).first().id
-        user.usergroups.append(usergroup_id)
-        return jsonify([{"msg":"User registered.", "success":"1"}]), 200
-    except:
-        return jsonify([{"msg":"Error occured, user NOT registered.", "success":"0"}]), 400
+    if not user_id:
+        user = User()
+        success_text = 'added'
+        usergroup = Usergroup(label='personal_{}'.format(username)) # every user has personal usergroup
+        user.usergroups.append(usergroup)
 
-
-@app.route('/api/edit_user', methods=['PATCH'])
-@jwt_required
-def edit_user():
-    if not request.is_json:
-        return jsonify(msg="Missing JSON in request", success=0), 400
-
-    old_username = request.json.get('old_username', None)
-    new_username = request.json.get('new_username', None)
-    email = request.json.get('email', None)
-    old_password = request.json.get('old_password', None)
-    new_password = request.json.get('new_password', None)
-    role = request.json.get('role', None)
-    user = User.query.filter(User.username == old_username).first()
-
-    #only admin and superusers can create new users
-    claims = get_jwt_claims()
-    if claims['role'] not in ('admin', 'superuser') and claims['username']!=username:
-        return jsonify(msg="User must have admin priviledges to edit other users", success=0), 401
-
-
-    # validating input
-    if not user:
-        return jsonify(msg='User not found', success=0), 400
-    if new_username:
-        username_check = validators.validate_username(new_username)
-        if not username_check['validated']:
-            return jsonify(msg=username_check['msg'], success=0), 400
-    if email:
-        email_check = validators.validate_email(email)
-        if not email_check['validated']:
-            return jsonify(msg=email_check['msg'], success=0), 400
-    #a user modifying their own password must provide existing password and new password.
-    #an admin modifying someone else's password need not provide the existing password
-    if new_password:
-        if not user.check_password(old_password) and claims['username']==username:
-            return jsonify(msg='Current password is incorrect.', success=0), 401
-        password_check = validators.validate_password(new_password)
-        if not password_check['validated']:
-            return jsonify(msg=password_check['msg'], success=0), 400
-    if role:
-        if not role_check['validated']:
-            return jsonify(msg=role_check['msg'], success=0), 400
-
-    # adding user to database
-    if not username and not email and not new_password and not role:
-        return jsonify(msg='No user attributes provided.', success=0), 400
+    user.username = username.lower() or user.username
+    user.password = password or user.password
+    user.role = role or user.role
+    user.email = email.lower() or user.email
+    user.usergroups += usergroups
 
     try:
-        if new_username:
-            user.username = new_username
-        if email:
-            user.email = email
-        if new_password:
-            user.set_password(new_password)
-        if role:
-            user.role = role
+        if success_text == 'added':
+            db.session.add(user)
+            db.session.add(usergroup)
         db.session.commit()
-        return jsonify([{"msg":"User updated.", "success":"1"}]), 200
+        return jsonify(msg='User successfully {}.'.format(success_text), user=user.get_dict(), success=1), 200
     except:
-        return jsonify([{"msg":"Error occured, user NOT registered.", "success":"0"}]), 400
+        return jsonify(msg='Error: User not {}'.format(success_text), success=0), 400
+
 
 @app.route('/api/delete_user', methods=['POST'])
 @jwt_required

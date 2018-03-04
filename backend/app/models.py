@@ -52,7 +52,7 @@ class User(db.Model):
         return list(set(map(lambda tup: tup[1], conn_tuple_list)))
 
 # returns list of usergroup dictionaries
-    def get_usergroups(self):
+    def get_dicts_from_usergroups(self):
         usergroup_ids = self.get_usergroup_ids()
         usergroup_objects_list = Usergroup.query.filter(Usergroup.id.in_(usergroup_ids)).all()
         return list(map(lambda obj: {'id': obj.id,
@@ -146,8 +146,8 @@ class Connection(db.Model):
             'password': self.password,
             'db_name': self.database_name,
             'creator': self.creator.get_dict(),
-            'usergroups': helpers.get_usergroups(self.usergroups),
-            'authorized_users': helpers.get_users(self.usergroups),
+            'usergroups': helpers.get_dicts_from_usergroups(self.usergroups),
+            'authorized_users': helpers.get_users_from_usergroups(self.usergroups),
             }
         return dict_format
 
@@ -175,8 +175,8 @@ class SqlQuery(db.Model):
             'label': self.label,
             'raw_sql': self.raw_sql,
             'creator': self.creator.get_dict(),
-            'usergroups': helpers.get_usergroups(self.usergroups),
-            'authorized_users': helpers.get_users(self.usergroups),
+            'usergroups': helpers.get_dicts_from_usergroups(self.usergroups),
+            'authorized_users': helpers.get_users_from_usergroups(self.usergroups),
         }
         return dict_format
 
@@ -209,8 +209,8 @@ class Chart(db.Model):
             'parameters': self.parameters,
             'sql_query': self.sql_query.get_dict(),
             'connection': self.chart_connection.get_dict(),
-            'usergroups': helpers.get_usergroups(self.usergroups),
-            'authorized_users': helpers.get_users(self.usergroups),
+            'usergroups': helpers.get_dicts_from_usergroups(self.usergroups),
+            'authorized_users': helpers.get_users_from_usergroups(self.usergroups),
             }
         return dict_format
 
@@ -243,8 +243,8 @@ class Report(db.Model):
             'last_published':self.last_published,
             'parameters':self.parameters,
             'publications':self.get_publications(),
-            'usergroups': helpers.get_usergroups(self.usergroups),
-            'authorized_users': helpers.get_users(self.usergroups),
+            'usergroups': helpers.get_dicts_from_usergroups(self.usergroups),
+            'authorized_users': helpers.get_users_from_usergroups(self.usergroups),
             }
         return dict_format
 
