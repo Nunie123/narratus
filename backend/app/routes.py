@@ -1,16 +1,18 @@
-import json
+
 from flask import request, jsonify
+from sqlalchemy import exc
 from flask_jwt_extended import (
     JWTManager, jwt_required, create_access_token, get_jwt_identity, get_raw_jwt
     , get_jwt_claims
 )
-from app.models import (
+from backend.app.models import (
     User, Usergroup, Connection, SqlQuery, Chart, Report, Publication,
     Contact, TokenBlacklist
 )
-from app import app, jwt, db
-import app.validators as validators
-from app import helper_functions as helpers
+from backend.app import app, jwt, db
+from backend.app import helper_functions as helpers
+from backend.app import validators
+
 
 @jwt.user_claims_loader
 def add_claims_to_access_token(user):
@@ -30,9 +32,11 @@ def check_if_token_in_blacklist(decrypted_token):
     blacklist = set(map(lambda obj: obj.jti, blacklist_objects))
     return jti in blacklist
 
+
 @app.route('/', methods=['GET'])
 def test():
     return jsonify(msg='this is working', success=1), 200
+
 
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -56,6 +60,7 @@ def login():
                     , msg="Login complete."
                     , success=1), 200
 
+
 # Endpoint for revoking the current users access token
 @app.route('/api/logout', methods=['POST'])
 @jwt_required
@@ -69,6 +74,7 @@ def logout():
     except:
         return jsonify([{"msg":"Logout failed.", "success":"0"}]), 400
 
+
 # ew user created if no user_id provided
 @app.route('/api/edit_user', methods=['POST', 'PATCH'])
 @jwt_required
@@ -76,11 +82,10 @@ def edit_user():
     if not request.is_json:
         return jsonify(msg="Missing JSON in request", success=0), 400
 
-    #only admin and superusers can create new users
+    # only admin and superusers can create new users
     claims = get_jwt_claims()
     if claims['role'] not in ('admin', 'superuser'):
         return jsonify(msg="User must have admin priviledges to create new users", success=0), 401
-
 
     user_id = request.json.get('user_id', None)
     username = request.json.get('username', None)
@@ -89,7 +94,15 @@ def edit_user():
     role = request.json.get('role', None)
     usergroup_ids = list(request.json.get('usergroup_ids', []))
     user = helpers.get_record_from_id(User, user_id)
-    usergroups = list(map(lambda id: helpers.get_record_from_id(Usergroup, id), usergroup_ids))
+
+    usergroups = []
+    for usergroup_id in usergroup_ids:
+        record = helpers.get_record_from_id(Usergroup, usergroup_id)
+        if record:
+            usergroups.append(record)
+        else:
+            return jsonify(msg='Provided usergroup not found.', success=0), 400
+
     success_text = 'edited'
 
     # if user id is provided, check to make sure it exists in the db
@@ -97,40 +110,39 @@ def edit_user():
         msg = 'Provided user_id not found.'
         return jsonify(msg=msg, success=0), 400
 
-    # validating input
-    username_check = validators.validate_username(username)
-    if not username_check['validated']:
-        return jsonify(msg=username_check['msg'], success=0), 400
-    email_check = validators.validate_email(email)
-    if not email_check['validated']:
-        return jsonify(msg=email_check['msg'], success=0), 400
-    password_check = validators.validate_password(password)
-    if not password_check['validated']:
-        return jsonify(msg=password_check['msg'], success=0), 400
-    role_check = validators.validate_role(role)
-    if not role_check['validated']:
-        return jsonify(msg=role_check['msg'], success=0), 400
-
     if not user_id:
         user = User()
         success_text = 'added'
-        usergroup = Usergroup(label='personal_{}'.format(username)) # every user has personal usergroup
-        user.usergroups.append(usergroup)
-
-    user.username = username.lower() or user.username
-    user.password = password or user.password
-    user.role = role or user.role
-    user.email = email.lower() or user.email
-    user.usergroups += usergroups
+        db.session.add(user)
 
     try:
-        if success_text == 'added':
-            db.session.add(user)
-            db.session.add(usergroup)
+        if username:
+            user.username = username.lower()
+
+        if role:
+            user.role = role
+
+        if email:
+            user.email = email.lower()
+
+        personal_usergroup = Usergroup.query.filter(Usergroup.label == 'personal_{}'.format(user.username)).first()
+        if not personal_usergroup:
+            personal_usergroup = Usergroup(label='personal_{}'.format(user.username))
+
+        if usergroups:
+            user.usergroups = usergroups
+
+        if personal_usergroup not in user.usergroups:
+            db.session.add(personal_usergroup)
+            user.usergroups.append(personal_usergroup)
+
+        if password:
+            user.set_password(password)
+
         db.session.commit()
         return jsonify(msg='User successfully {}.'.format(success_text), user=user.get_dict(), success=1), 200
-    except:
-        return jsonify(msg='Error: User not {}'.format(success_text), success=0), 400
+    except (exc.IntegrityError, AssertionError) as exception_message:
+        return jsonify(msg='Error: {}. User not {}'.format(exception_message, success_text), success=0), 400
 
 
 @app.route('/api/delete_user', methods=['POST'])
@@ -143,17 +155,20 @@ def delete_user():
     user = User.query.filter(User.id == user_id).first()
     claims = get_jwt_claims()
 
+    if claims['role'] not in ('admin', 'superuser'):
+        return jsonify(msg="User must have admin privileges to delete a user.", success=0), 401
+
     if not user:
         return jsonify(msg='User not found', success=0), 400
 
-    if claims['role'] not in ('admin', 'superuser'):
-        return jsonify(msg="User must have admin priviledges to delete a user.", success=0), 401
+    if user.role == 'superuser' and claims['role'] != 'superuser':
+        return jsonify(msg="User must have superuser privileges to delete a superuser.", success=0), 401
 
-    if user.role != 'superuser':
-        return jsonify(msg="User must have superuser priviledges to delete a superuser.", success=0), 401
-
-    usergroup = Usergroup.query.filter(Usergroup.name == 'personal_{}'.format(user.username))
-    db.session.delete(user, usergroup)
+    usergroup = Usergroup.query.filter(Usergroup.label == 'personal_{}'.format(user.username)).first()
+    print(user.get_dict())
+    print(usergroup.get_dict())
+    db.session.delete(user)
+    db.session.delete(usergroup)
     db.session.commit()
     return jsonify(msg='User deleted.', success=1), 200
 

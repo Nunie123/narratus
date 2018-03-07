@@ -1,17 +1,21 @@
 from datetime import datetime
-from app import db
+import re
 from werkzeug.security import generate_password_hash, check_password_hash
-from app import helper_functions as helpers
+from sqlalchemy.orm import validates
+from backend.app import helper_functions as helpers
+from backend.app import db
 
 user_perms = db.Table('user_perms',
-    db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
-    db.Column('usergroup_id', db.Integer, db.ForeignKey('usergroup.id'), primary_key=True)
-)
+                      db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+                      db.Column('usergroup_id', db.Integer, db.ForeignKey('usergroup.id'), primary_key=True),
+                      db.UniqueConstraint('user_id', 'usergroup_id', name='UC_user_id_usergroup_id'),
+                      )
+
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(64), index=True, unique=True)
-    email = db.Column(db.String(120), index=True)
+    username = db.Column(db.String(64), index=True, unique=True, nullable=False)
+    email = db.Column(db.String(120), index=True, nullable=False)
     password_hash = db.Column(db.String(128))
     role = db.Column(db.Enum('viewer', 'writer', 'admin', 'superuser', name='user_roles'), default='viewer')
     connections = db.relationship('Connection', backref='creator', lazy='dynamic')
@@ -20,21 +24,78 @@ class User(db.Model):
     reports = db.relationship('Report', backref='creator', lazy='dynamic')
     publications = db.relationship('Publication', backref='creator', lazy='dynamic')
     contacts = db.relationship('Contact', backref='creator', lazy='dynamic')
-    usergroups = db.relationship("Usergroup",
-                    secondary=user_perms,
-                    backref="usergroup_users")
+    usergroups = db.relationship("Usergroup", secondary=user_perms, backref="usergroup_users")
+
+    @validates('username')
+    def validate_username(self, key, username):
+        if not username:
+            raise AssertionError('No username provided')
+
+        is_string = isinstance(username, str)
+        is_unique = not User.query.filter(User.username == username).first()
+        # is_only_numbers_and_letters = re.match("^[a-zA-Z0-9]+$", username)
+        is_more_than_5_characters = len(username) >= 5
+        is_less_than_20_characters = len(username) <= 20
+
+        if not is_string:
+            raise AssertionError('Provided username is invalid')
+
+        if not is_unique:
+            raise AssertionError('Provided username is already in use')
+
+        # if not is_only_numbers_and_letters:
+        #     raise AssertionError('Usernames may only contain letters and numbers')
+
+        if not is_more_than_5_characters:
+            raise AssertionError('Username must be 5 or more characters')
+
+        if not is_less_than_20_characters:
+            raise AssertionError('Usernames may only be 20 characters or less')
+
+        return username
+
+    @validates('email')
+    def validate_email(self, key, email):
+        if not email:
+            raise AssertionError('No email provided')
+        if not re.match("[^@]+@[^@]+\.[^@]+", email):
+            raise AssertionError('Provided email is not an email address')
+
+        return email
+
+    @validates('role')
+    def validate_email(self, key, role):
+        if role not in ('viewer', 'writer', 'admin'):
+            AssertionError('Provided role is not recognized')
+
+        return role
+
+    @validates('usergroups')
+    def validate_usergroups(self, key, usergroups):
+        if not isinstance(usergroups, Usergroup):
+            raise AssertionError('Provided usergroup is not recognized')
+
+        return usergroups
 
     def get_dict(self):
         dict_format = {
-            "user_id":self.id,
-            "username":self.username,
-            "email":self.email,
-            "role":self.role
+            "user_id": self.id,
+            "username": self.username,
+            "email": self.email,
+            "role": self.role
             }
         return dict_format
 
-
     def set_password(self, password):
+        if not password:
+            raise AssertionError('Password not provided')
+
+        if not re.match('\d.*[A-Z]|[A-Z].*\d', password):
+            raise AssertionError('Password must contain 1 capital letter and 1 number')
+
+        if len(password) < 8 or len(password) > 50:
+            raise AssertionError('Password must be between 8 and 50 characters')
+
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
@@ -89,16 +150,15 @@ class User(db.Model):
         created_contacts = Contact.query.filter(Contact.creator_user_id==self.id).all()
         return list(map(lambda obj: obj.get_dict(), public_contacts + created_contacts))
 
-
     def __repr__(self):
         return '<User {}>'.format(self.username)
+
 
 class Usergroup(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     label = db.Column(db.String(64), index=True, unique=True)
-    members = db.relationship("User",
-                    secondary=user_perms,
-                    backref="user_usergroups")
+    members = db.relationship("User", secondary=user_perms, backref="user_usergroups")
+
 # returns list or users associated with usergroup
     def get_members(self):
         return list(map(lambda obj: obj.get_dict(), self.members))
@@ -154,10 +214,12 @@ class Connection(db.Model):
     def __repr__(self):
         return '<Connection label: {}>'.format(self.label)
 
+
 query_perms = db.Table('query_perms',
     db.Column('query_id', db.Integer, db.ForeignKey('sql_query.id'), primary_key=True),
     db.Column('usergroup_id', db.Integer, db.ForeignKey('usergroup.id'), primary_key=True)
 )
+
 
 class SqlQuery(db.Model):
     id = db.Column(db.Integer, primary_key=True)

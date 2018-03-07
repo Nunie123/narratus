@@ -1,20 +1,13 @@
 from flask import Flask
 from flask_testing import TestCase
-from app.models import (
+from backend.app.models import (
     User, Report, Publication, Contact
 )
-from app import db
+from backend.app import db
+from backend.test.test_utils import TestUtils, Config
 
-class Config:
-    DEBUG = True
-    TESTING = True
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///'
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-class UserModelTest(TestCase):
-
-    SQLALCHEMY_DATABASE_URI = "sqlite://"
-    TESTING = True
+class UserModelTest(TestCase, TestUtils):
 
     def create_app(self):
         app = Flask(__name__)
@@ -30,10 +23,9 @@ class UserModelTest(TestCase):
         db.drop_all()
 
     def test_get_dict_returns_dict(self):
-        user = User(username='sam')
+        user = self.create_user(username='samson')
         report = Report(label='r1', creator=user)
         publication = Publication(type='email', creator=user, publication_report=report)
-        db.session.add(user)
         db.session.add(report)
         db.session.add(publication)
         db.session.commit()
@@ -43,11 +35,11 @@ class UserModelTest(TestCase):
         assert isinstance(publication_dict, dict)
         assert publication_dict['publication_id']
         assert publication_dict['type'] == "email"
-        assert publication_dict['creator']['username'] == 'sam'
+        assert publication_dict['creator']['username'] == 'samson'
         assert publication_dict['report_id'] == 1
 
     def test_get_recipients(self):
-        user = User(username='sam')
+        user = self.create_user(username='samson')
         report = Report(label='r1', creator=user)
         contact1 = Contact(first_name='Josiah', creator=user)
         contact2 = Contact(first_name='Toby', creator=user)

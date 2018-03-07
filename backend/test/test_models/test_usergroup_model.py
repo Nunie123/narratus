@@ -1,21 +1,14 @@
 from flask import Flask
 from flask_testing import TestCase
-from app.models import (
-    User, Usergroup, Connection, SqlQuery, Chart, Report, Publication,
-    Contact, TokenBlacklist, connection_perms
+from sqlalchemy import exc
+from backend.app.models import (
+    Usergroup
 )
-from app import db
+from backend.app import db
+from backend.test.test_utils import TestUtils, Config
 
-class Config:
-    DEBUG = True
-    TESTING = True
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///'
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-class UserModelTest(TestCase):
-
-    SQLALCHEMY_DATABASE_URI = "sqlite://"
-    TESTING = True
+class UserModelTest(TestCase, TestUtils):
 
     def create_app(self):
         app = Flask(__name__)
@@ -31,8 +24,8 @@ class UserModelTest(TestCase):
         db.drop_all()
 
     def test_get_members(self):
-        user1 = User(username='sam')
-        user2 = User(username='josh')
+        user1 = self.create_user(username='samson')
+        user2 = self.create_user(username='joshua')
         usergroup = Usergroup(label='group1')
         usergroup.members.append(user1)
         usergroup.members.append(user2)
@@ -41,27 +34,24 @@ class UserModelTest(TestCase):
 
         assert len(members) == 2
         assert isinstance(members[0], dict)
-        assert members[0]['username'] == 'sam'
+        assert members[0]['username'] == 'samson'
 
     def test_get_dict_returns_dict(self):
-        user = User(username='sam')
-        usergroup = Usergroup(label='group1')
+        user = self.create_user(username='samson')
+        usergroup = self.create_usergroup(label='group1')
         usergroup.members.append(user)
-        db.session.add(usergroup, user)
         db.session.commit()
         usergroup_dict = usergroup.get_dict()
 
         assert isinstance(usergroup_dict, dict)
         assert usergroup_dict['usergroup_id']
         assert usergroup_dict['label'] == "group1"
-        assert usergroup_dict['members'][0]['username'] == 'sam'
+        assert usergroup_dict['members'][0]['username'] == 'samson'
 
     def test_labels_are_unique(self):
-        usergroup1 = Usergroup(label="sam")
-        usergroup2 = Usergroup(label="sam")
-        db.session.add(usergroup1, usergroup2)
-        db.session.commit()
-
-        usergroups = Usergroup.query.all()
-
-        assert len(usergroups) == 1
+        self.create_user(username='samson')
+        try:
+            self.create_user(username='samson')
+            raise Exception('username must be unique.')
+        except (exc.IntegrityError, AssertionError):
+            pass

@@ -1,12 +1,11 @@
 import json
 from flask import Flask
 from flask_testing import TestCase
-from app.models import (
-    User, TokenBlacklist
+from backend.app.models import (
+    User
 )
-from test.test_utils import TestUtils, Config
-from app import db, routes, app
-
+from backend.test.test_utils import TestUtils, Config
+from backend.app import db, app
 
 
 class UserSessionTest(TestCase, TestUtils):
@@ -21,37 +20,35 @@ class UserSessionTest(TestCase, TestUtils):
         super().setUp()
         self.client = app.test_client()
         db.create_all()
-        user = User(username='sam')
-        user.set_password('westwing')
-        db.session.add(user)
-        db.session.commit()
 
     def tearDown(self):
         db.session.remove()
         db.drop_all()
 
-
     def test_login_logout(self):
-        response = self.login(username='sam', password='westwing')
+        username = 'samson'
+        password = 'Secret123'
+        self.create_user(username=username, password=password)
+        response = self.login(username=username, password=password)
         response_dict = json.loads(response.data)
         token = response_dict['access_token']
 
-        assert response.status_code == 200 #login successful
+        assert response.status_code == 200  # login successful
 
         response = self.logout(token)
-        assert response.status_code == 200 #logout successful
+        assert response.status_code == 200  # logout successful
 
         response = self.logout(token)
-        assert response.status_code == 401 #token revoked
+        assert response.status_code == 401  # token revoked
 
         response = self.login(username='unknown_sam', password='westwing')
-        assert response.status_code == 401 # username rejected
+        assert response.status_code == 401  # username rejected
 
-        response = self.login(username='sam', password='incorrect')
-        assert response.status_code == 401 # password rejected
+        response = self.login(username='samson', password='incorrect')
+        assert response.status_code == 401  # password rejected
 
-        response = self.login(username='sam', password='')
-        assert response.status_code == 401 # empty password rejected
+        response = self.login(username='samson', password='')
+        assert response.status_code == 401  # empty password rejected
 
         response = self.login(username='', password='westwing')
-        assert response.status_code == 401 # empty username rejected
+        assert response.status_code == 401  # empty username rejected
