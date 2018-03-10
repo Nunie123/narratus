@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: bbab2b6ae0eb
+Revision ID: 12bf50dccba9
 Revises: 
-Create Date: 2018-02-28 19:57:07.776784
+Create Date: 2018-03-07 10:08:14.523234
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'bbab2b6ae0eb'
+revision = '12bf50dccba9'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -25,8 +25,8 @@ def upgrade():
     )
     op.create_table('user',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('username', sa.String(length=64), nullable=True),
-    sa.Column('email', sa.String(length=120), nullable=True),
+    sa.Column('username', sa.String(length=64), nullable=False),
+    sa.Column('email', sa.String(length=120), nullable=False),
     sa.Column('password_hash', sa.String(length=128), nullable=True),
     sa.Column('role', sa.Enum('viewer', 'writer', 'admin', 'superuser', name='user_roles'), nullable=True),
     sa.PrimaryKeyConstraint('id')
@@ -92,7 +92,8 @@ def upgrade():
     sa.Column('usergroup_id', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['user.id'], ),
     sa.ForeignKeyConstraint(['usergroup_id'], ['usergroup.id'], ),
-    sa.PrimaryKeyConstraint('user_id', 'usergroup_id')
+    sa.PrimaryKeyConstraint('user_id', 'usergroup_id'),
+    sa.UniqueConstraint('user_id', 'usergroup_id', name='UC_user_id_usergroup_id')
     )
     op.create_table('chart',
     sa.Column('id', sa.Integer(), nullable=False),

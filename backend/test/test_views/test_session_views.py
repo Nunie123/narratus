@@ -41,14 +41,23 @@ class UserSessionTest(TestCase, TestUtils):
         response = self.logout(token)
         assert response.status_code == 401  # token revoked
 
-        response = self.login(username='unknown_sam', password='westwing')
+        response = self.login(username='unknown_sam', password=password)
         assert response.status_code == 401  # username rejected
 
-        response = self.login(username='samson', password='incorrect')
+        response = self.login(username='samson', password='incorrectPassword123')
         assert response.status_code == 401  # password rejected
 
         response = self.login(username='samson', password='')
-        assert response.status_code == 401  # empty password rejected
+        assert response.status_code == 400  # empty password rejected
 
-        response = self.login(username='', password='westwing')
-        assert response.status_code == 401  # empty username rejected
+        response = self.login(username='', password=password)
+        assert response.status_code == 400  # empty username rejected
+
+    def test_inactive_user_cannot_log_in(self):
+        username = 'inactiveuser'
+        password = 'Secret123'
+        self.create_user(is_active=False, username=username, password=password)
+
+        response = self.login(username=username, password=password)
+
+        assert response.status_code == 401

@@ -18,13 +18,15 @@ class User(db.Model):
     email = db.Column(db.String(120), index=True, nullable=False)
     password_hash = db.Column(db.String(128))
     role = db.Column(db.Enum('viewer', 'writer', 'admin', 'superuser', name='user_roles'), default='viewer')
+    is_active = db.Column(db.Boolean, default=True)
     connections = db.relationship('Connection', backref='creator', lazy='dynamic')
     queries = db.relationship('SqlQuery', backref='creator', lazy='dynamic')
     charts = db.relationship('Chart', backref='creator', lazy='dynamic')
     reports = db.relationship('Report', backref='creator', lazy='dynamic')
     publications = db.relationship('Publication', backref='creator', lazy='dynamic')
     contacts = db.relationship('Contact', backref='creator', lazy='dynamic')
-    usergroups = db.relationship("Usergroup", secondary=user_perms, backref="usergroup_users")
+    usergroups = db.relationship("Usergroup", secondary=user_perms, backref="members"
+                                 , cascade="save-update, merge")
 
     @validates('username')
     def validate_username(self, key, username):
@@ -103,7 +105,7 @@ class User(db.Model):
 
 # returns list of usergroup ids
     def get_usergroup_ids(self):
-        ug_tuple_list = db.session.query(user_perms).filter(user_perms.c.user_id==self.id).all()
+        ug_tuple_list = db.session.query(user_perms).filter(user_perms.c.user_id == self.id).all()
         return list(map(lambda tup: tup[1], ug_tuple_list))
 
 # takes table, returns list of ids
@@ -157,7 +159,7 @@ class User(db.Model):
 class Usergroup(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     label = db.Column(db.String(64), index=True, unique=True)
-    members = db.relationship("User", secondary=user_perms, backref="user_usergroups")
+
 
 # returns list or users associated with usergroup
     def get_members(self):

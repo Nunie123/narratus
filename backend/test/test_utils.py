@@ -24,8 +24,9 @@ class TestUtils:
         return self.client.post('/api/logout', headers={'Authorization': 'Bearer {}'.format(token)})
 
     def create_user(self, username: str = 'samson', password: str = 'Secret123', email: str = 'sseaborn@whitehouse.gov'
-                    , role: str = 'admin', user_id: int = None, usergroup_label: str = 'ug1') -> User:
-        user = User(username=username, email=email, role=role)
+                    , role: str = 'admin', user_id: int = None, usergroup_label: str = 'ug1'
+                    , is_active: bool = True) -> User:
+        user = User(username=username, email=email, role=role, is_active=is_active)
         user.set_password(password)
         if user_id:
             user.id = user_id

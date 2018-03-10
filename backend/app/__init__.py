@@ -6,7 +6,7 @@ from flask_migrate import Migrate
 
 # import config file to global object
 config = ConfigParser()
-config_file = '../config.ini'
+config_file = '/Users/ednunes/dev/narratus/backend/config.ini'
 config.read(config_file)
 
 # instantiate flask app

@@ -19,7 +19,8 @@ def add_claims_to_access_token(user):
     return {'user_id': user.id,
             'username': user.username,
             'email': user.email,
-            'role': user.role}
+            'role': user.role,
+            'is_active': user.is_active}
 
 @jwt.user_identity_loader
 def user_identity_lookup(user):
@@ -45,20 +46,22 @@ def login():
 
     username = request.json.get('username', None)
     password = request.json.get('password', None)
+    user = helpers.get_user_from_username(username)
 
     if not username:
-        return jsonify(msg="Missing username parameter", success=0), 401
+        return jsonify(msg="Missing username parameter.", success=0), 400
     if not password:
-        return jsonify(msg="Missing password parameter", success=0), 401
-    user = User.query.filter(User.username == username).first()
+        return jsonify(msg="Missing password parameter.", success=0), 400
 
     if user is None or not user.check_password(password):
         return jsonify(msg="Bad username or password", success=0), 401
 
+    if user.is_active is False:
+        return jsonify(msg="Your account is inactive.", success=0), 401
+
     access_token = create_access_token(identity=user)
-    return jsonify(access_token=access_token
-                    , msg="Login complete."
-                    , success=1), 200
+
+    return jsonify(access_token=access_token, msg="Login complete.", success=1), 200
 
 
 # Endpoint for revoking the current users access token
@@ -75,26 +78,39 @@ def logout():
         return jsonify([{"msg":"Logout failed.", "success":"0"}]), 400
 
 
-# ew user created if no user_id provided
+@app.route('/api/get_all_users', methods=['GET'])
+@jwt_required
+def get_all_users():
+    if not request.is_json:
+        return jsonify(msg="Missing JSON in request", success=0), 400
+
+    # only admin and superusers can view all users
+    claims = get_jwt_claims()
+    if claims['role'] not in ('admin', 'superuser'):
+        return jsonify(msg="User must have admin privileges to view other users", success=0), 401
+
+    users_object_list = User.query.all()
+    users_dict_list = list(map(lambda user: user.get_dict(), users_object_list))
+    return jsonify(msg="All users provided", users=users_dict_list, success=1), 200
+
+
+# New user created if no user_id provided
 @app.route('/api/edit_user', methods=['POST', 'PATCH'])
 @jwt_required
 def edit_user():
     if not request.is_json:
         return jsonify(msg="Missing JSON in request", success=0), 400
 
-    # only admin and superusers can create new users
-    claims = get_jwt_claims()
-    if claims['role'] not in ('admin', 'superuser'):
-        return jsonify(msg="User must have admin priviledges to create new users", success=0), 401
-
-    user_id = request.json.get('user_id', None)
-    username = request.json.get('username', None)
-    email = request.json.get('email', None)
-    password = request.json.get('password', None)
-    role = request.json.get('role', None)
-    usergroup_ids = list(request.json.get('usergroup_ids', []))
+    request_json = request.get_json()
+    user_id = request_json.get('user_id', None)
+    username = request_json.get('username', None)
+    email = request_json.get('email', None)
+    password = request_json.get('password', None)
+    role = request_json.get('role', None)
+    is_active = request_json.get('is_active', None)
+    usergroup_ids = list(request_json.get('usergroup_ids', []))
     user = helpers.get_record_from_id(User, user_id)
-
+    success_text = 'edited'
     usergroups = []
     for usergroup_id in usergroup_ids:
         record = helpers.get_record_from_id(Usergroup, usergroup_id)
@@ -103,14 +119,33 @@ def edit_user():
         else:
             return jsonify(msg='Provided usergroup not found.', success=0), 400
 
-    success_text = 'edited'
+    claims = get_jwt_claims()
+    requester_is_editing_self = claims['user_id'] == user_id
+    requester_is_admin = claims['role'] in ('admin', 'superuser')
+    requester_is_active = claims['is_active']
+    is_edit_user_request = user_id
+    is_create_user_request = not user_id
+
+    if not requester_is_active:
+        return jsonify(msg="Your account is no longer active.", success=0), 401
+
+    # only admin and superusers can create new users
+    if is_create_user_request and not requester_is_admin:
+        return jsonify(msg="User must have admin privileges to create new users.", success=0), 401
+
+    # non-admin can only edit themselves
+    if is_edit_user_request and not requester_is_admin and not requester_is_editing_self:
+        return jsonify(msg="User must have admin privileges to edit other users.", success=0), 401
+
+    if is_edit_user_request and not requester_is_admin and role:
+        return jsonify(msg="User must have admin privileges to edit a user's role.", success=0), 401
 
     # if user id is provided, check to make sure it exists in the db
-    if user_id and not user:
+    if is_edit_user_request and not user:
         msg = 'Provided user_id not found.'
         return jsonify(msg=msg, success=0), 400
 
-    if not user_id:
+    if is_create_user_request:
         user = User()
         success_text = 'added'
         db.session.add(user)
@@ -121,6 +156,9 @@ def edit_user():
 
         if role:
             user.role = role
+
+        if is_active or is_active is False:
+            user.is_active = is_active
 
         if email:
             user.email = email.lower()
@@ -152,7 +190,7 @@ def delete_user():
         return jsonify(msg="Missing JSON in request", success=0), 400
 
     user_id = request.json.get('user_id', None)
-    user = User.query.filter(User.id == user_id).first()
+    user = helpers.get_record_from_id(User, user_id)
     claims = get_jwt_claims()
 
     if claims['role'] not in ('admin', 'superuser'):
@@ -164,37 +202,21 @@ def delete_user():
     if user.role == 'superuser' and claims['role'] != 'superuser':
         return jsonify(msg="User must have superuser privileges to delete a superuser.", success=0), 401
 
-    usergroup = Usergroup.query.filter(Usergroup.label == 'personal_{}'.format(user.username)).first()
-    print(user.get_dict())
-    print(usergroup.get_dict())
+    if claims['user_id'] == user_id:
+        return jsonify(msg="User cannot delete self.", success=0), 401
+
+    usergroup = helpers.get_personal_usergroup_from_user_object(user)
     db.session.delete(user)
     db.session.delete(usergroup)
     db.session.commit()
     return jsonify(msg='User deleted.', success=1), 200
 
-@app.route('/api/get_all_users', methods=['GET'])
-@jwt_required
-def get_all_users():
-    if not request.is_json:
-        return jsonify(msg="Missing JSON in request", success=0), 400
-
-    #only admin and superusers can view all users
-    claims = get_jwt_claims()
-    if claims['role'] not in ('admin', 'superuser'):
-        return jsonify(msg="User must have admin priviledges to view other users", success=0), 401
-
-    try:
-        users_raw = User.query.all()
-        users = list(map(lambda user: user.get_dict()), users_raw)
-        return jsonify(msg="All users provided",users=users, success=1), 200
-    except:
-        return jsonify(msg="Error occured.", success=0), 400
 
 @app.route('/api/get_all_usergroups', methods=['GET'])
 @jwt_required
 def get_all_usergroups():
 
-    #only admin and superusers can view all usergroups
+    # only admin and superusers can view all usergroups
     claims = get_jwt_claims()
     if claims['role'] not in ('admin', 'superuser'):
         return jsonify(msg="User must have admin priviledges to view all usergroups", success=0), 401
@@ -213,13 +235,13 @@ def get_usergroups_by_user():
     username = request.json.get('username', None)
     claims = get_jwt_claims()
 
-    #endpoint will return current user's usergroups if no username is provided
+    # endpoint will return current user's usergroups if no username is provided
     if not username:
         username = claims['username']
 
     user = User.query.filter(User.username == username).first()
 
-    #only admin and superusers can cview another user's usergroups
+    # only admin and superusers can cview another user's usergroups
     if claims['role'] not in ('admin', 'superuser') and claims['username']!=username:
         return jsonify(msg="User must have admin priviledges to view other users' usergroups", success=0), 401
 

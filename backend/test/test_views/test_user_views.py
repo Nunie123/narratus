@@ -2,7 +2,7 @@ import json
 from flask import Flask
 from flask_testing import TestCase
 from backend.app.models import (
-    User, Usergroup
+    User, Usergroup, user_perms
 )
 from backend.test.test_utils import TestUtils, Config
 from backend.app import db, app
@@ -21,12 +21,12 @@ class UserViewTest(TestCase, TestUtils):
         self.client = app.test_client()
         db.create_all()
 
-        # log in as admin
+        # log in as writer
         login_response = self.create_user_and_login(username='writer', password='Secret123', role='writer')
         login_response_dict = json.loads(login_response.data)
         self.writer_token = login_response_dict['access_token']
 
-        # log in as writer
+        # log in as admin
         login_response = self.create_user_and_login(username='admin', password='Secret123', role='admin')
         login_response_dict = json.loads(login_response.data)
         self.admin_token = login_response_dict['access_token']
@@ -48,26 +48,34 @@ class UserViewTest(TestCase, TestUtils):
         return response
 
     def patch_to_edit_user(self, user_id, username=None, password='Secret123', email='u@example.com', role='admin'
-                           , usergroup_ids=list(), token_type='admin'):
+                           , usergroup_ids=list(), is_active=True, token_type='admin'):
         if token_type=='writer':
             token = self.writer_token
         else:
             token = self.admin_token
         data = dict(user_id=user_id, username=username, password=password, role=role, email=email
-                    , usergroup_ids=usergroup_ids)
+                    , usergroup_ids=usergroup_ids, is_active=is_active)
         response = self.client.patch('/api/edit_user', data=json.dumps(data), content_type='application/json'
                                      , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
 
     def post_to_delete_user(self, user_id, token_type='admin'):
-        if token_type=='writer':
+        if token_type == 'writer':
             token = self.writer_token
         else:
             token = self.admin_token
         data = dict(user_id=user_id)
         response = self.client.post('/api/delete_user', data=json.dumps(data), content_type='application/json'
-                                     , headers={'Authorization': 'Bearer {}'.format(token)})
+                                    , headers={'Authorization': 'Bearer {}'.format(token)})
+        return response
 
+    def get_to_get_all_users(self, token_type='admin'):
+        if token_type == 'writer':
+            token = self.writer_token
+        else:
+            token = self.admin_token
+        response = self.client.get('/api/get_all_users', content_type='application/json'
+                                   , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
 
 
@@ -234,6 +242,30 @@ class UserViewTest(TestCase, TestUtils):
 
         assert personal_usergroup
 
+    def test_non_admin_can_edit_self(self):
+        username = 'writer'
+        non_admin = User.query.filter(User.username == username).first()
+        user_id = non_admin.id
+        new_username = 'The Best Writer'
+
+        response = self.patch_to_edit_user(user_id=user_id, username=new_username, token_type=username, role='')
+        response_dict = json.loads(response.data)
+        user = helpers.get_record_from_id(User, user_id)
+
+        assert response.status_code == 200
+        assert user.username == new_username.lower()
+
+    def test_non_admin_cannot_change_own_role(self):
+        username = 'writer'
+        non_admin = User.query.filter(User.username == username).first()
+        user_id = non_admin.id
+        new_role = 'admin'
+
+        response = self.patch_to_edit_user(user_id=user_id, role=new_role, token_type=username)
+        response_dict = json.loads(response.data)
+
+        assert response.status_code == 401
+
     def test_create_user_creates_personal_usergroup(self):
         with db.session.no_autoflush:
             username = 'new_user'
@@ -251,24 +283,81 @@ class UserViewTest(TestCase, TestUtils):
     def test_post_to_delete_user_with_valid_data(self):
         user_id = 42
         username = 'archibald'
-        # self.create_usergroup(label='personal_{}'.format(username))
         self.create_user(user_id=user_id, username=username)
-
+        personal_usergroup = Usergroup.query.filter(Usergroup.label == 'personal_{}'.format(username)).first()
+        usergroup_id = personal_usergroup.id
 
         response = self.post_to_delete_user(user_id=user_id)
-        print(response)
         response_dict = json.loads(response.data)
-        print(response_dict)
         user = helpers.get_record_from_id(User, user_id)
-        print(user.get_dict())
+        usergroup = helpers.get_record_from_id(Usergroup, usergroup_id)
+
         assert not user
+        assert not usergroup
 
 
     def test_post_to_delete_user_with_bad_user_id(self):
-        pass
+        bad_user_id = 9999999
+
+        response = self.post_to_delete_user(user_id=bad_user_id)
+        response_dict = json.loads(response.data)
+
+        assert response.status_code == 400
 
     def test_post_to_delete_user_without_admin_privileges(self):
-        pass
+        user_id = 42
+        username = 'archibald'
+        self.create_user(user_id=user_id, username=username)
 
-    def test_post_to_delete_user_also_deletes_personal_usergroup(self):
-        pass
+        response = self.post_to_delete_user(user_id=user_id, token_type='writer')
+        response_dict = json.loads(response.data)
+        user = helpers.get_record_from_id(User, user_id)
+
+        assert user
+        assert response.status_code == 401
+
+    def test_user_cannot_delete_self(self):
+        admin_user = User.query.filter(User.username == 'admin').first()
+        admin_user_id = admin_user.id
+
+        response = self.post_to_delete_user(user_id=admin_user_id, token_type='admin')
+        response_dict = json.loads(response.data)
+        user = helpers.get_record_from_id(User, admin_user_id)
+
+        assert user
+        assert response.status_code == 401
+
+    def test_admin_can_make_user_inactive(self):
+        user_id = 42
+        self.create_user(user_id=user_id)
+
+        response = self.patch_to_edit_user(user_id=user_id, token_type='admin', is_active=False)
+        user = helpers.get_record_from_id(User, user_id)
+
+        assert response.status_code == 200
+        assert user.is_active is False
+
+    def test_only_admin_make_other_users_inactive(self):
+        user_id = 42
+        self.create_user(user_id=user_id)
+
+        response = self.patch_to_edit_user(user_id=user_id, token_type='writer', is_active=False)
+        user = helpers.get_record_from_id(User, user_id)
+
+        assert response.status_code == 401
+        assert user.is_active is True
+
+    def test_only_admin_can_get_all_users(self):
+        response = self.get_to_get_all_users(token_type='writer')
+
+        assert response.status_code == 401
+
+    def test_get_all_users_includes_all_users(self):
+        all_users_count = len(User.query.all())
+
+        response = self.get_to_get_all_users()
+        response_dict = json.loads(response.data)
+
+        response_count = len(response_dict['users'])
+
+        assert all_users_count == response_count
