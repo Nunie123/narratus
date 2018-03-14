@@ -5,14 +5,14 @@ from backend.app.models import (
     Usergroup
 )
 from backend.app import db
-from backend.test.test_utils import TestUtils, Config
+from backend.test import test_utils
 
 
-class UserModelTest(TestCase, TestUtils):
+class UserModelTest(TestCase):
 
     def create_app(self):
         app = Flask(__name__)
-        app.config.from_object(Config())
+        app.config.from_object(test_utils.Config())
         db.init_app(app)
         return app
 
@@ -24,8 +24,8 @@ class UserModelTest(TestCase, TestUtils):
         db.drop_all()
 
     def test_get_members(self):
-        user1 = self.create_user(username='samson')
-        user2 = self.create_user(username='joshua')
+        user1 = test_utils.create_user(username='samson')
+        user2 = test_utils.create_user(username='joshua')
         usergroup = Usergroup(label='group1')
         usergroup.members.append(user1)
         usergroup.members.append(user2)
@@ -37,8 +37,8 @@ class UserModelTest(TestCase, TestUtils):
         assert members[0]['username'] == 'samson'
 
     def test_get_dict_returns_dict(self):
-        user = self.create_user(username='samson')
-        usergroup = self.create_usergroup(label='group1')
+        user = test_utils.create_user(username='samson')
+        usergroup = test_utils.create_usergroup(label='group1')
         usergroup.members.append(user)
         db.session.commit()
         usergroup_dict = usergroup.get_dict()
@@ -49,9 +49,9 @@ class UserModelTest(TestCase, TestUtils):
         assert usergroup_dict['members'][0]['username'] == 'samson'
 
     def test_labels_are_unique(self):
-        self.create_user(username='samson')
+        test_utils.create_user(username='samson')
         try:
-            self.create_user(username='samson')
+            test_utils.create_user(username='samson')
             raise Exception('username must be unique.')
         except (exc.IntegrityError, AssertionError):
             pass

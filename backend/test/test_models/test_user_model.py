@@ -6,14 +6,14 @@ from backend.app.models import (
     Contact, connection_perms
 )
 from backend.app import db
-from backend.test.test_utils import TestUtils, Config
+from backend.test import test_utils
 
 
-class UserModelTest(TestCase, TestUtils):
+class UserModelTest(TestCase):
 
     def create_app(self):
         app = Flask(__name__)
-        app.config.from_object(Config())
+        app.config.from_object(test_utils.Config())
         db.init_app(app)
         return app
 
@@ -25,7 +25,7 @@ class UserModelTest(TestCase, TestUtils):
         db.drop_all()
 
     def test_get_dict_returns_dict(self):
-        user = self.create_user(username='samson', email="sseaborn@whitehouse.gov", role="admin")
+        user = test_utils.create_user(username='samson', email="sseaborn@whitehouse.gov", role="admin")
         user_dict = user.get_dict()
 
         assert isinstance(user_dict, dict)
@@ -35,9 +35,9 @@ class UserModelTest(TestCase, TestUtils):
         assert user_dict['role'] == "admin"
 
     def test_usernames_are_unique(self):
-        self.create_user(username='samson')
+        test_utils.create_user(username='samson')
         try:
-            self.create_user(username='samson')
+            test_utils.create_user(username='samson')
             raise Exception('username must be unique.')
         except (exc.IntegrityError, AssertionError):
             pass
@@ -59,7 +59,7 @@ class UserModelTest(TestCase, TestUtils):
 
     def test_appending_to_usergroups(self):
         usergroup1 = Usergroup(label="group1")
-        user = self.create_user(username='samson')
+        user = test_utils.create_user(username='samson')
         usergroup_length_start = len(user.usergroups)
         user.usergroups.append(usergroup1)
         usergroup_length_end = len(user.usergroups)
@@ -68,7 +68,7 @@ class UserModelTest(TestCase, TestUtils):
         assert usergroup_length_end == usergroup_length_start + 1
 
     def test_get_usergroup_ids(self):
-        user = self.create_user()
+        user = test_utils.create_user()
         usergroup_ids = user.get_usergroup_ids()
 
         assert isinstance(usergroup_ids, list)
@@ -79,7 +79,7 @@ class UserModelTest(TestCase, TestUtils):
         usergroup1 = Usergroup(label='group1')
         usergroup2 = Usergroup(label='group2')
         usergroup3 = Usergroup(label='group3')
-        user = self.create_user(username='samson')
+        user = test_utils.create_user(username='samson')
         connection.usergroups.append(usergroup1)
         connection.usergroups.append(usergroup2)
         connection.creator = user
@@ -98,11 +98,11 @@ class UserModelTest(TestCase, TestUtils):
         assert isinstance(authorized_ids[0], int)
 
     def test_get_dicts_from_usergroups(self):
-        user = self.create_user(username='samson')
+        user = test_utils.create_user(username='samson')
         starting_usergroups_count = len(user.get_dicts_from_usergroups())
 
-        usergroup2 = self.create_usergroup(label='group2')
-        usergroup3 = self.create_usergroup(label='group3')
+        usergroup2 = test_utils.create_usergroup(label='group2')
+        usergroup3 = test_utils.create_usergroup(label='group3')
         user.usergroups.append(usergroup2)
         user.usergroups.append(usergroup3)
         db.session.commit()
@@ -114,8 +114,8 @@ class UserModelTest(TestCase, TestUtils):
         assert isinstance(usergroups[0], dict)
 
     def test_get_connections(self):
-        usergroup1 = self.create_usergroup(label='group1')
-        user = self.create_user(username='samson')
+        usergroup1 = test_utils.create_usergroup(label='group1')
+        user = test_utils.create_user(username='samson')
         connection1 = Connection(label='con1', creator=user)
         connection1.usergroups.append(usergroup1)
         user.usergroups.append(usergroup1)
@@ -129,8 +129,8 @@ class UserModelTest(TestCase, TestUtils):
         assert connections[0]['label'] == 'con1'
 
     def test_get_queries(self):
-        usergroup1 = self.create_usergroup(label='group1')
-        user = self.create_user(username='samson')
+        usergroup1 = test_utils.create_usergroup(label='group1')
+        user = test_utils.create_user(username='samson')
         query1 = SqlQuery(label='query1', creator=user)
         query1.usergroups.append(usergroup1)
         user.usergroups.append(usergroup1)
@@ -144,8 +144,8 @@ class UserModelTest(TestCase, TestUtils):
         assert queries[0]['creator']['username'] == 'samson'
 
     def test_get_charts(self):
-        usergroup1 = self.create_usergroup(label='group1')
-        user = self.create_user(username='samson')
+        usergroup1 = test_utils.create_usergroup(label='group1')
+        user = test_utils.create_user(username='samson')
         query = SqlQuery(label='q1', creator=user)
         connection = Connection(label='con1', creator=user)
         chart1 = Chart(label='chart1', creator=user, sql_query=query, chart_connection=connection)
@@ -161,8 +161,8 @@ class UserModelTest(TestCase, TestUtils):
         assert charts[0]['creator']['username'] == 'samson'
 
     def test_get_reports(self):
-        usergroup1 = self.create_usergroup(label='group1')
-        user = self.create_user(username='samson')
+        usergroup1 = test_utils.create_usergroup(label='group1')
+        user = test_utils.create_user(username='samson')
         report1 = Report(label='rep1', creator=user)
         report1.usergroups.append(usergroup1)
         user.usergroups.append(usergroup1)
@@ -176,8 +176,8 @@ class UserModelTest(TestCase, TestUtils):
         assert reports[0]['creator']['username'] == 'samson'
 
     def test_get_contacts(self):
-        user1 = self.create_user(username='samson')
-        user2 = self.create_user(username='joshua')
+        user1 = test_utils.create_user(username='samson')
+        user2 = test_utils.create_user(username='joshua')
         contact1 = Contact(first_name='bartlett', creator=user2, public=True)
         contact2 = Contact(first_name='toby', creator=user1, public=False)
         db.session.add(contact1)
@@ -192,6 +192,3 @@ class UserModelTest(TestCase, TestUtils):
         assert contacts[0]['first_name'] == 'bartlett'
         assert contacts[0]['creator']['username'] == 'joshua'
 
-
-if __name__ == '__main__':
-    unittest.main()

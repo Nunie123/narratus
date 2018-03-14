@@ -2,16 +2,16 @@ import json
 from flask import Flask
 from flask_testing import TestCase
 from backend.app.models import Usergroup
-from backend.test.test_utils import TestUtils, Config
+from backend.test import test_utils
 from backend.app import db, app
 from backend.app import helper_functions as helpers
 
 
-class UserViewTest(TestCase, TestUtils):
+class UserViewTest(TestCase):
 
     def create_app(self):
         app = Flask(__name__)
-        app.config.from_object(Config())
+        app.config.from_object(test_utils.Config())
         db.init_app(app)
         return app
 
@@ -20,12 +20,14 @@ class UserViewTest(TestCase, TestUtils):
         db.create_all()
 
         # log in as writer
-        login_response = self.create_user_and_login(username='writer', password='Secret123', role='writer')
+        login_response = test_utils.create_user_and_login(username='writer', password='Secret123', role='writer'
+                                                          , client=self.client)
         login_response_dict = json.loads(login_response.data)
         self.writer_token = login_response_dict['access_token']
 
         # log in as admin
-        login_response = self.create_user_and_login(username='admin', password='Secret123', role='admin')
+        login_response = test_utils.create_user_and_login(username='admin', password='Secret123', role='admin'
+                                                          , client=self.client)
         login_response_dict = json.loads(login_response.data)
         self.admin_token = login_response_dict['access_token']
 
@@ -67,8 +69,8 @@ class UserViewTest(TestCase, TestUtils):
         return response
 
     def test_get_all_usergroups_returns_all_usergroups(self):
-        self.create_usergroup(label='ug101')
-        self.create_usergroup(label='ug201')
+        test_utils.create_usergroup(label='ug101')
+        test_utils.create_usergroup(label='ug201')
 
         usergroup_count = len(Usergroup.query.all())
 
@@ -120,7 +122,7 @@ class UserViewTest(TestCase, TestUtils):
     def test_edit_label_with_valid_data(self):
         starting_label = 'my group'
         group_id = 42
-        self.create_usergroup(label=starting_label, usergroup_id=group_id)
+        test_utils.create_usergroup(label=starting_label, usergroup_id=group_id)
 
         new_label = 'my new group'
         response = self.patch_to_edit_usergroups(label=new_label, usergroup_id=group_id)
@@ -142,7 +144,7 @@ class UserViewTest(TestCase, TestUtils):
     def test_edit_label_with_bad_label(self):
         starting_label = 'my group'
         group_id = 42
-        self.create_usergroup(label=starting_label, usergroup_id=group_id)
+        test_utils.create_usergroup(label=starting_label, usergroup_id=group_id)
 
         new_label = ''
         response = self.patch_to_edit_usergroups(label=new_label, usergroup_id=group_id)
@@ -155,10 +157,10 @@ class UserViewTest(TestCase, TestUtils):
 
     def test_add_member_to_usergroup(self):
         user_id = 42
-        user = self.create_user(user_id=user_id)
+        user = test_utils.create_user(user_id=user_id)
 
         usergroup_id = 1234
-        self.create_usergroup(usergroup_id=usergroup_id)
+        test_utils.create_usergroup(usergroup_id=usergroup_id)
 
         response = self.patch_to_edit_usergroups(usergroup_id=usergroup_id, member_ids=[user_id])
 
@@ -170,7 +172,7 @@ class UserViewTest(TestCase, TestUtils):
 
     def test_add_member_to_usergroup_with_bad_user_id(self):
         usergroup_id = 1234
-        self.create_usergroup(usergroup_id=usergroup_id)
+        test_utils.create_usergroup(usergroup_id=usergroup_id)
 
         response = self.patch_to_edit_usergroups(usergroup_id=usergroup_id, member_ids=[99999])
 
@@ -181,10 +183,10 @@ class UserViewTest(TestCase, TestUtils):
 
     def test_add_connection_to_usergroup(self):
         usergroup_id = 1234
-        self.create_usergroup(usergroup_id=usergroup_id)
+        test_utils.create_usergroup(usergroup_id=usergroup_id)
 
         connection_id = 42
-        self.create_connection(connection_id=connection_id)
+        test_utils.create_connection(connection_id=connection_id)
 
         response = self.patch_to_edit_usergroups(usergroup_id=usergroup_id, connection_ids=[connection_id])
 
@@ -195,7 +197,7 @@ class UserViewTest(TestCase, TestUtils):
 
     def test_add_connection_to_usergroup_with_bad_connection_id(self):
         usergroup_id = 1234
-        self.create_usergroup(usergroup_id=usergroup_id)
+        test_utils.create_usergroup(usergroup_id=usergroup_id)
 
         connection_id = 9999999
 
@@ -208,10 +210,10 @@ class UserViewTest(TestCase, TestUtils):
 
     def test_add_query_to_usergroup(self):
         usergroup_id = 1234
-        self.create_usergroup(usergroup_id=usergroup_id)
+        test_utils.create_usergroup(usergroup_id=usergroup_id)
 
         query_id = 42
-        self.create_query(query_id=query_id)
+        test_utils.create_query(query_id=query_id)
 
         response = self.patch_to_edit_usergroups(usergroup_id=usergroup_id, query_ids=[query_id])
 
@@ -222,7 +224,7 @@ class UserViewTest(TestCase, TestUtils):
 
     def test_add_query_to_usergroup_with_bad_query_id(self):
         usergroup_id = 1234
-        self.create_usergroup(usergroup_id=usergroup_id)
+        test_utils.create_usergroup(usergroup_id=usergroup_id)
 
         query_id = 9999999
 
@@ -235,10 +237,10 @@ class UserViewTest(TestCase, TestUtils):
 
     def test_add_chart_to_usergroup(self):
         usergroup_id = 1234
-        self.create_usergroup(usergroup_id=usergroup_id)
+        test_utils.create_usergroup(usergroup_id=usergroup_id)
 
         chart_id = 42
-        self.create_chart(chart_id=chart_id)
+        test_utils.create_chart(chart_id=chart_id)
 
         response = self.patch_to_edit_usergroups(usergroup_id=usergroup_id, chart_ids=[chart_id])
 
@@ -249,7 +251,7 @@ class UserViewTest(TestCase, TestUtils):
 
     def test_add_chart_to_usergroup_with_bad_chart_id(self):
         usergroup_id = 1234
-        self.create_usergroup(usergroup_id=usergroup_id)
+        test_utils.create_usergroup(usergroup_id=usergroup_id)
 
         chart_id = 9999999
 
@@ -262,10 +264,10 @@ class UserViewTest(TestCase, TestUtils):
 
     def test_add_report_to_usergroup(self):
         usergroup_id = 1234
-        self.create_usergroup(usergroup_id=usergroup_id)
+        test_utils.create_usergroup(usergroup_id=usergroup_id)
 
         report_id = 42
-        self.create_report(report_id=report_id)
+        test_utils.create_report(report_id=report_id)
 
         response = self.patch_to_edit_usergroups(usergroup_id=usergroup_id, report_ids=[report_id])
 
@@ -276,7 +278,7 @@ class UserViewTest(TestCase, TestUtils):
 
     def test_add_report_to_usergroup_with_bad_report_id(self):
         usergroup_id = 1234
-        self.create_usergroup(usergroup_id=usergroup_id)
+        test_utils.create_usergroup(usergroup_id=usergroup_id)
 
         report_id = 9999999
 
@@ -296,7 +298,7 @@ class UserViewTest(TestCase, TestUtils):
     def test_cannot_edit_personal_usergroups(self):
         starting_label = 'personal_user42'
         group_id = 42
-        self.create_usergroup(label=starting_label, usergroup_id=group_id)
+        test_utils.create_usergroup(label=starting_label, usergroup_id=group_id)
 
         new_label = 'my new group'
         response = self.patch_to_edit_usergroups(label=new_label, usergroup_id=group_id)

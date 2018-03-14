@@ -1,17 +1,15 @@
 from flask import Flask
 from flask_testing import TestCase
-from backend.app.models import (
-    User, Report, Publication, Contact
-)
+from backend.app.models import Report, Publication, Contact
 from backend.app import db
-from backend.test.test_utils import TestUtils, Config
+from backend.test import test_utils
 
 
-class UserModelTest(TestCase, TestUtils):
+class UserModelTest(TestCase):
 
     def create_app(self):
         app = Flask(__name__)
-        app.config.from_object(Config())
+        app.config.from_object(test_utils.Config())
         db.init_app(app)
         return app
 
@@ -23,7 +21,7 @@ class UserModelTest(TestCase, TestUtils):
         db.drop_all()
 
     def test_get_dict_returns_dict(self):
-        user = self.create_user(username='samson')
+        user = test_utils.create_user(username='samson')
         report = Report(label='r1', creator=user)
         publication = Publication(type='email', creator=user, publication_report=report)
         db.session.add(report)
@@ -39,7 +37,7 @@ class UserModelTest(TestCase, TestUtils):
         assert publication_dict['report_id'] == 1
 
     def test_get_recipients(self):
-        user = self.create_user(username='samson')
+        user = test_utils.create_user(username='samson')
         report = Report(label='r1', creator=user)
         contact1 = Contact(first_name='Josiah', creator=user)
         contact2 = Contact(first_name='Toby', creator=user)

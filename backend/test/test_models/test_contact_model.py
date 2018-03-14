@@ -1,18 +1,15 @@
 from flask import Flask
 from flask_testing import TestCase
-from backend.app.models import (
-    User,
-    Contact
-)
+from backend.app.models import Contact
 from backend.app import db
-from backend.test.test_utils import TestUtils, Config
+from backend.test import test_utils
 
 
-class UserModelTest(TestCase, TestUtils):
+class UserModelTest(TestCase):
 
     def create_app(self):
         app = Flask(__name__)
-        app.config.from_object(Config())
+        app.config.from_object(test_utils.Config())
         db.init_app(app)
         return app
 
@@ -24,7 +21,7 @@ class UserModelTest(TestCase, TestUtils):
         db.drop_all()
 
     def test_get_dict_returns_dict(self):
-        user = self.create_user(username='samson')
+        user = test_utils.create_user(username='samson')
         contact = Contact(first_name='josh', creator=user)
         db.session.add(user)
         db.session.add(contact)

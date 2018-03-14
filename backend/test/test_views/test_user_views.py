@@ -4,16 +4,16 @@ from flask_testing import TestCase
 from backend.app.models import (
     User, Usergroup
 )
-from backend.test.test_utils import TestUtils, Config
+from backend.test import test_utils
 from backend.app import db, app
 from backend.app import helper_functions as helpers
 
 
-class UserViewTest(TestCase, TestUtils):
+class UserViewTest(TestCase):
 
     def create_app(self):
         app = Flask(__name__)
-        app.config.from_object(Config())
+        app.config.from_object(test_utils.Config())
         db.init_app(app)
         return app
 
@@ -22,12 +22,14 @@ class UserViewTest(TestCase, TestUtils):
         db.create_all()
 
         # log in as writer
-        login_response = self.create_user_and_login(username='writer', password='Secret123', role='writer')
+        login_response = test_utils.create_user_and_login(username='writer', password='Secret123', role='writer'
+                                                          , client=self.client)
         login_response_dict = json.loads(login_response.data)
         self.writer_token = login_response_dict['access_token']
 
         # log in as admin
-        login_response = self.create_user_and_login(username='admin', password='Secret123', role='admin')
+        login_response = test_utils.create_user_and_login(username='admin', password='Secret123', role='admin'
+                                                          , client=self.client)
         login_response_dict = json.loads(login_response.data)
         self.admin_token = login_response_dict['access_token']
 
@@ -37,7 +39,7 @@ class UserViewTest(TestCase, TestUtils):
 
     def post_to_edit_user(self, username, password='Secret123', email='u@example.com', role='admin'
                           , usergroup_ids=list(), token_type='admin'):
-        if token_type=='writer':
+        if token_type == 'writer':
             token = self.writer_token
         else:
             token = self.admin_token
@@ -49,12 +51,14 @@ class UserViewTest(TestCase, TestUtils):
 
     def patch_to_edit_user(self, user_id, username=None, password='Secret123', email='u@example.com', role='admin'
                            , usergroup_ids=list(), is_active=True, token_type='admin'):
-        if token_type=='writer':
+        if token_type == 'writer':
             token = self.writer_token
         else:
             token = self.admin_token
+
         data = dict(user_id=user_id, username=username, password=password, role=role, email=email
                     , usergroup_ids=usergroup_ids, is_active=is_active)
+
         response = self.client.patch('/api/edit_user', data=json.dumps(data), content_type='application/json'
                                      , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
@@ -169,8 +173,8 @@ class UserViewTest(TestCase, TestUtils):
     def test_edit_user_with_valid_data(self):
         starting_user_count = len(User.query.all())
 
-        user_id = '42'
-        self.create_user(username='edit1', email='edit1@example.com', role='viewer', user_id=user_id)
+        user_id = 42
+        test_utils.create_user(username='edit1', email='edit1@example.com', role='viewer', user_id=user_id)
 
         response = self.patch_to_edit_user(username='edit2', email='edit2@gmail.com', role='writer', user_id=user_id)
         edited_user = User.query.filter(User.id == user_id).first()
@@ -197,9 +201,9 @@ class UserViewTest(TestCase, TestUtils):
         starting_user_count = len(User.query.all())
 
         user_id = 42
-        self.create_user(username='edit1', email='edit1@example.com', role='viewer', user_id=user_id)
-        ug1 = self.create_usergroup(label='ug101', usergroup_id=101)
-        ug2 = self.create_usergroup(label='ug102', usergroup_id=102)
+        test_utils.create_user(username='edit1', email='edit1@example.com', role='viewer', user_id=user_id)
+        test_utils.create_usergroup(label='ug101', usergroup_id=101)
+        test_utils.create_usergroup(label='ug102', usergroup_id=102)
 
         response = self.patch_to_edit_user(username='edit2', email='edit2@gmail.com', role='writer', user_id=user_id
                                            , usergroup_ids=[101, 102])
@@ -214,11 +218,10 @@ class UserViewTest(TestCase, TestUtils):
 
     def test_edit_user_with_invalid_usergroups(self):
         user_id = 42
-        self.create_user(username='edit1', email='edit1@example.com', role='viewer', user_id=user_id)
+        test_utils.create_user(username='edit1', email='edit1@example.com', role='viewer', user_id=user_id)
 
         usergroup_ids = [99999, 888888]
         response = self.patch_to_edit_user(user_id=user_id, usergroup_ids=usergroup_ids)
-        response_dict = json.loads(response.data)
         edited_user = User.query.filter(User.id == user_id).first()
         edited_usergroup_ids = edited_user.get_usergroup_ids()
 
@@ -228,13 +231,12 @@ class UserViewTest(TestCase, TestUtils):
     def test_edit_user_cant_remove_personal_usergroup(self):
         user_id = 42
         username = 'edit_1'
-        self.create_user(username=username, user_id=user_id)
+        test_utils.create_user(username=username, user_id=user_id)
 
         usergroup_ids = [99]
 
-        self.create_usergroup(label='test_ug', usergroup_id=usergroup_ids[0])
-        response = self.patch_to_edit_user(user_id=user_id, usergroup_ids=usergroup_ids)
-        response_dict = json.loads(response.data)
+        test_utils.create_usergroup(label='test_ug', usergroup_id=usergroup_ids[0])
+        self.patch_to_edit_user(user_id=user_id, usergroup_ids=usergroup_ids)
 
         user = User.query.filter(User.id == user_id).first()
         usergroups = user.get_dicts_from_usergroups()
@@ -284,7 +286,7 @@ class UserViewTest(TestCase, TestUtils):
     def test_post_to_delete_user_with_valid_data(self):
         user_id = 42
         username = 'archibald'
-        self.create_user(user_id=user_id, username=username)
+        test_utils.create_user(user_id=user_id, username=username)
         personal_usergroup = Usergroup.query.filter(Usergroup.label == 'personal_{}'.format(username)).first()
         usergroup_id = personal_usergroup.id
 
@@ -308,7 +310,7 @@ class UserViewTest(TestCase, TestUtils):
     def test_post_to_delete_user_without_admin_privileges(self):
         user_id = 42
         username = 'archibald'
-        self.create_user(user_id=user_id, username=username)
+        test_utils.create_user(user_id=user_id, username=username)
 
         response = self.post_to_delete_user(user_id=user_id, token_type='writer')
         response_dict = json.loads(response.data)
@@ -330,7 +332,7 @@ class UserViewTest(TestCase, TestUtils):
 
     def test_admin_can_make_user_inactive(self):
         user_id = 42
-        self.create_user(user_id=user_id)
+        test_utils.create_user(user_id=user_id)
 
         response = self.patch_to_edit_user(user_id=user_id, token_type='admin', is_active=False)
         user = helpers.get_record_from_id(User, user_id)
@@ -340,7 +342,7 @@ class UserViewTest(TestCase, TestUtils):
 
     def test_only_admin_make_other_users_inactive(self):
         user_id = 42
-        self.create_user(user_id=user_id)
+        test_utils.create_user(user_id=user_id)
 
         response = self.patch_to_edit_user(user_id=user_id, token_type='writer', is_active=False)
         user = helpers.get_record_from_id(User, user_id)
