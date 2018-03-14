@@ -27,3 +27,10 @@ def get_personal_usergroup_from_user_object(user):
 
 def get_user_from_username(username):
     return models.User.query.filter(models.User.username == username).first()
+
+
+def any_args_are_truthy(*args):
+    for arg in args:
+        if arg:
+            return True
+    return False

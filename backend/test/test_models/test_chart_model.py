@@ -1,16 +1,11 @@
 from flask import Flask
 from flask_testing import TestCase
-from backend.app.models import (
-    User, Connection, SqlQuery, Chart
-)
+from backend.app.models import Connection, SqlQuery, Chart
 from backend.app import db
 from backend.test.test_utils import TestUtils, Config
 
 
 class UserModelTest(TestCase, TestUtils):
-
-    SQLALCHEMY_DATABASE_URI = "sqlite://"
-    TESTING = True
 
     def create_app(self):
         app = Flask(__name__)

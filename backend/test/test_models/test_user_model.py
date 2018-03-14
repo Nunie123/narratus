@@ -82,6 +82,7 @@ class UserModelTest(TestCase, TestUtils):
         user = self.create_user(username='samson')
         connection.usergroups.append(usergroup1)
         connection.usergroups.append(usergroup2)
+        connection.creator = user
         user.usergroups.append(usergroup2)
         user.usergroups.append(usergroup3)
         db.session.add(connection)

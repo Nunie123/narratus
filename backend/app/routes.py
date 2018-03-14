@@ -1,8 +1,8 @@
-
+import re
 from flask import request, jsonify
 from sqlalchemy import exc
 from flask_jwt_extended import (
-    JWTManager, jwt_required, create_access_token, get_jwt_identity, get_raw_jwt
+    jwt_required, create_access_token, get_raw_jwt
     , get_jwt_claims
 )
 from backend.app.models import (
@@ -20,11 +20,14 @@ def add_claims_to_access_token(user):
             'username': user.username,
             'email': user.email,
             'role': user.role,
-            'is_active': user.is_active}
+            'is_active': user.is_active,
+            'usergroups': user.get_dicts_from_usergroups(), }
+
 
 @jwt.user_identity_loader
 def user_identity_lookup(user):
     return user.username
+
 
 @jwt.token_in_blacklist_loader
 def check_if_token_in_blacklist(decrypted_token):
@@ -73,9 +76,9 @@ def logout():
         blacklist_jti = TokenBlacklist(jti=jti)
         db.session.add(blacklist_jti)
         db.session.commit()
-        return jsonify([{"msg":"Logout successful.", "success":"1"}]), 200
+        return jsonify(msg="Logout successful.", success=1), 200
     except:
-        return jsonify([{"msg":"Logout failed.", "success":"0"}]), 400
+        return jsonify(msg="Logout failed.", success=0), 400
 
 
 @app.route('/api/get_all_users', methods=['GET'])
@@ -145,13 +148,17 @@ def edit_user():
         msg = 'Provided user_id not found.'
         return jsonify(msg=msg, success=0), 400
 
+    if is_edit_user_request \
+            and not helpers.any_args_are_truthy(username, email, password, role, is_active, usergroup_ids):
+        return jsonify(msg="No changes to user provided.", success=0), 400
+
     if is_create_user_request:
         user = User()
         success_text = 'added'
         db.session.add(user)
 
     try:
-        if username:
+        if username or is_create_user_request:
             user.username = username.lower()
 
         if role:
@@ -160,7 +167,7 @@ def edit_user():
         if is_active or is_active is False:
             user.is_active = is_active
 
-        if email:
+        if email or is_create_user_request:
             user.email = email.lower()
 
         personal_usergroup = Usergroup.query.filter(Usergroup.label == 'personal_{}'.format(user.username)).first()
@@ -174,12 +181,12 @@ def edit_user():
             db.session.add(personal_usergroup)
             user.usergroups.append(personal_usergroup)
 
-        if password:
+        if password or is_create_user_request:
             user.set_password(password)
 
         db.session.commit()
         return jsonify(msg='User successfully {}.'.format(success_text), user=user.get_dict(), success=1), 200
-    except (exc.IntegrityError, AssertionError) as exception_message:
+    except AssertionError as exception_message:
         return jsonify(msg='Error: {}. User not {}'.format(exception_message, success_text), success=0), 400
 
 
@@ -219,37 +226,15 @@ def get_all_usergroups():
     # only admin and superusers can view all usergroups
     claims = get_jwt_claims()
     if claims['role'] not in ('admin', 'superuser'):
-        return jsonify(msg="User must have admin priviledges to view all usergroups", success=0), 401
+        return jsonify(msg="User must have admin privileges to view all usergroups", success=0), 401
 
     try:
         usergroups_raw = Usergroup.query.all()
         usergroups = list(map(lambda usergroup: usergroup.get_dict(), usergroups_raw))
-        return jsonify(msg="All usergroups provided",users=users, success=1), 200
+        return jsonify(msg="All usergroups provided", usergroups=usergroups, success=1), 200
     except:
-        return jsonify(msg="Error occured.", success=0), 400
+        return jsonify(msg="Error occurred.", success=0), 400
 
-@app.route('/api/get_usergroups_by_user', methods=['GET'])
-@jwt_required
-def get_usergroups_by_user():
-
-    username = request.json.get('username', None)
-    claims = get_jwt_claims()
-
-    # endpoint will return current user's usergroups if no username is provided
-    if not username:
-        username = claims['username']
-
-    user = User.query.filter(User.username == username).first()
-
-    # only admin and superusers can cview another user's usergroups
-    if claims['role'] not in ('admin', 'superuser') and claims['username']!=username:
-        return jsonify(msg="User must have admin priviledges to view other users' usergroups", success=0), 401
-
-    try:
-        usergroups = user.get_usergroups()
-        return jsonify(msg="All usergroups provided",usergroups=usergroups, success=1), 200
-    except:
-        return jsonify(msg="Error occured.", success=0), 400
 
 # if no usergroup id is provided a new usergroup will be created
 @app.route('/api/edit_usergroup', methods=['POST', 'PATCH'])
@@ -258,67 +243,74 @@ def edit_usergroup():
     if not request.is_json:
         return jsonify(msg="Missing JSON in request", success=0), 400
 
-    usergroup_id = request.json.get('usergroup_id', None)
-    name = request.json.get('name', None)
-    member_ids = list(request.json.get('members', []))
-    connection_ids = list(request.json.get('connections', []))
-    query_ids = list(request.json.get('queries', []))
-    chart_ids = list(request.json.get('charts', []))
-    report_ids = list(request.json.get('reports', []))
-    claims = get_jwt_claims()
-    success_text == 'edited'
+    request_json = request.get_json()
+    usergroup_id = request_json.get('usergroup_id', None)
+    label = request_json.get('label', None)
+    member_ids = list(request_json.get('member_ids', []))
+    connection_ids = list(request_json.get('connection_ids', []))
+    query_ids = list(request_json.get('query_ids', []))
+    chart_ids = list(request_json.get('chart_ids', []))
+    report_ids = list(request_json.get('report_ids', []))
+    usergroup = helpers.get_record_from_id(Usergroup, usergroup_id)
+    success_text = 'edited'
 
-    # Admin may add anyone to usergroup.  Standard user may only add themself.
-    if claims['role'] not in ('admin', 'superuser'):
-        if len(member_names)>1 or member_names[0]!=claims['username']:
-            msg = 'Only admin may add other users to usergroup'
-            return jsonify(msg=msg, success=0), 401
+    claims = get_jwt_claims()
+    requester_is_admin = claims['role'] in ('admin', 'superuser')
+    requester_is_active = claims['is_active']
+    is_edit_usergroup_request = usergroup_id
+    is_create_usergroup_request = not usergroup_id
+
+    if not requester_is_active:
+        return jsonify(msg="Your account is no longer active.", success=0), 401
+
+    # only admin and superusers can create or edit usergroups
+    if not requester_is_admin:
+        return jsonify(msg="User must have admin privileges to create and edit new usergroups.", success=0), 401
+
+    # if provided usergroup_id is not valid
+    if is_edit_usergroup_request and not helpers.get_record_from_id(Usergroup, usergroup_id):
+        msg = 'Provided usergroup_id not found.'
+        return jsonify(msg=msg, success=0), 400
 
     # if usergroup id is not provided create a new usergroup record
-    if not usergroup_id and request.method == 'POST':
-        if not name:
-            return jsonify(msg='Usergroup name must be provided.', success=0), 400
-        if re.match('personal_', name):
-            return jsonify(msg='Usergroup name cannot start with "personal".', success=0), 400
-        ug = Usergroup(name=name)
-        db.session.add(ug)
-        db.session.commit()
-        usergroup_id = Usergroup.query.filter(Usergroup.name == name).first().id
-        success_text == 'created'
-    # creating new usergroup shoudl be done with POST http method
-    elif not usergroup_id and request.method != 'POST':
-        msg = 'No usergroup_id provided.  To create new usergroup, use POST method.'
-        return jsonify(msg=msg, success=0), 400
-    # editing existing usergroup should be done through PATCH http method
-    elif usergroup_id and request.method != 'PATCH':
-        msg = 'Usergroup_id provided.  To edit existing usergroup, use PATCH method.'
-        return jsonify(msg=msg, success=0), 400
-    # if usergroup id is provided, check to make sure it exists in the db
-    elif usergroup_id and not Usergroup.query.filter(Usergroup.id == usergroup_id):
-        msg = 'Provided usergoup_id not found.'
-        return jsonify(msg=msg, success=0), 400
+    if is_create_usergroup_request:
+        usergroup = Usergroup()
+        success_text = 'created'
+        db.session.add(usergroup)
 
-    for member_id in member_ids:
-        user = User.query.filted(User.id == member_id)
-        user.usergroups.append(usergroup_id)
-    for connection_id in connection_ids:
-        connection = Connection.query.filted(Connection.id == connection_id)
-        onnection.usergroups.append(usergroup_id)
-    for query_id in query_ids:
-        query = Query.query.filted(Query.id == query_id)
-        query.usergroups.append(usergroup_id)
-    for chart_id in chart_ids:
-        chart = Chart.query.filted(Chart.id == chart_id)
-        chart.usergroups.append(usergroup_id)
-    for report_id in report_ids:
-        report = Report.query.filted(Report.id == report_id)
-        report.usergroups.append(usergroup_id)
+    if is_edit_usergroup_request \
+            and not helpers.any_args_are_truthy(label, member_ids, connection_ids, query_ids, chart_ids, report_ids):
+        return jsonify(msg="No changes to usergroup provided.", success=0), 400
+
+    if re.match('personal_', label or 'x') or re.match('personal_', usergroup.label or 'x'):
+        return jsonify(msg='Personal usergroups cannot be {}.'.format(success_text), success=0), 401
 
     try:
+        for member_id in member_ids:
+            user = helpers.get_record_from_id(User, member_id)
+            usergroup.members.append(user)
+        for connection_id in connection_ids:
+            connection = helpers.get_record_from_id(Connection, connection_id)
+            usergroup.connections.append(connection)
+        for query_id in query_ids:
+            query = helpers.get_record_from_id(SqlQuery, query_id)
+            usergroup.queries.append(query)
+        for chart_id in chart_ids:
+            chart = helpers.get_record_from_id(Chart, chart_id)
+            usergroup.charts.append(chart)
+        for report_id in report_ids:
+            report = helpers.get_record_from_id(Report, report_id)
+            usergroup.reports.append(report)
+
+        if label or is_create_usergroup_request:
+            usergroup.label = label
+
         db.session.commit()
-        return jsonify(msg='Usergroup successfully {}.'.format(success_text), success=1), 200
-    except:
-        return jsonify(msg='Error: usergroup not {}.'.format(success_text), success=0), 400
+        return jsonify(msg='Usergroup successfully {}.'.format(success_text), success=1
+                       , usergroup=usergroup.get_dict()), 200
+    except AssertionError as exception_message:
+        return jsonify(msg='Error: {}.'.format(exception_message), success=0), 400
+
 
 @app.route('/api/delete_usergroup', methods=['POST'])
 @jwt_required
@@ -330,7 +322,7 @@ def delete_usergroup():
     claims = get_jwt_claims()
     usergroup = Usergroup.query.filter(Usergroup.id == usergroup_id).first()
 
-    #validate usergroup_id
+    # validate usergroup_id
     if not usergroup_id:
         return jsonify(msg='Usergroup_id not provided.', success=0), 400
     if not usergroup:
@@ -344,16 +336,17 @@ def delete_usergroup():
             msg = 'User not authorized to delete this usergroup.'
             return jsonify(msg=msg, success=0), 401
     # no user can delete their personal usergroup (only auto-deleted when user is deleted)
-    if re.match('personal_',usergroup.name):
+    if re.match('personal_', usergroup.name):
         return jsonify(msg='Personal usergroups cannot be deleted.', success=0), 401
 
-    #delete usergroup
+    # delete usergroup
     try:
         db.session.delete(usergroup)
         db.session.commit()
         return jsonify(msg='Usergroup deleted.', success=1), 200
     except:
         return jsonify(msg='Error: Usergroup not deleted.', success=0), 400
+
 
 @app.route('/api/get_all_connections', methods=['GET'])
 @jwt_required

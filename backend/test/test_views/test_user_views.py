@@ -2,7 +2,7 @@ import json
 from flask import Flask
 from flask_testing import TestCase
 from backend.app.models import (
-    User, Usergroup, user_perms
+    User, Usergroup
 )
 from backend.test.test_utils import TestUtils, Config
 from backend.app import db, app
@@ -93,10 +93,9 @@ class UserViewTest(TestCase, TestUtils):
         assert response_dict['user']['username'] == username
         assert len(users) == starting_user_count + 1
 
-    def test_create_new_user_with_invalid_data(self):
+    def test_create_new_user_with_blank_email(self):
         with db.session.no_autoflush:
             starting_user_count = len(User.query.all())
-            # submit without email
             response = self.post_to_edit_user(username='test1', email='')
             response_dict = json.loads(response.data)
             users = User.query.all()
@@ -104,8 +103,9 @@ class UserViewTest(TestCase, TestUtils):
         assert response.status_code == 400  # email required
         assert len(users) == starting_user_count
 
+    def test_create_new_user_with_blank_username(self):
         with db.session.no_autoflush:
-            # submit with blank username
+            starting_user_count = len(User.query.all())
             response = self.post_to_edit_user(username='')
             response_dict = json.loads(response.data)
             users = User.query.all()
@@ -113,9 +113,10 @@ class UserViewTest(TestCase, TestUtils):
         assert response.status_code == 400  # blank username rejected
         assert len(users) == starting_user_count
 
+    def test_create_new_user_with_blank_password(self):
         with db.session.no_autoflush:
-            # submit with blank password
-            response = self.post_to_edit_user(username='test1', password='aa')
+            starting_user_count = len(User.query.all())
+            response = self.post_to_edit_user(username='test1', password='')
             response_dict = json.loads(response.data)
             users = User.query.all()
 

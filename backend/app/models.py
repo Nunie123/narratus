@@ -2,6 +2,7 @@ from datetime import datetime
 import re
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.orm import validates
+from sqlalchemy import func
 from backend.app import helper_functions as helpers
 from backend.app import db
 
@@ -25,8 +26,7 @@ class User(db.Model):
     reports = db.relationship('Report', backref='creator', lazy='dynamic')
     publications = db.relationship('Publication', backref='creator', lazy='dynamic')
     contacts = db.relationship('Contact', backref='creator', lazy='dynamic')
-    usergroups = db.relationship("Usergroup", secondary=user_perms, backref="members"
-                                 , cascade="save-update, merge")
+    usergroups = db.relationship("Usergroup", secondary=user_perms, backref="members", cascade="save-update, merge")
 
     @validates('username')
     def validate_username(self, key, username):
@@ -66,7 +66,7 @@ class User(db.Model):
         return email
 
     @validates('role')
-    def validate_email(self, key, role):
+    def validate_role(self, key, role):
         if role not in ('viewer', 'writer', 'admin'):
             AssertionError('Provided role is not recognized')
 
@@ -84,7 +84,9 @@ class User(db.Model):
             "user_id": self.id,
             "username": self.username,
             "email": self.email,
-            "role": self.role
+            "role": self.role,
+            "usergroups": self.get_dicts_from_usergroups()
+
             }
         return dict_format
 
@@ -118,9 +120,7 @@ class User(db.Model):
     def get_dicts_from_usergroups(self):
         usergroup_ids = self.get_usergroup_ids()
         usergroup_objects_list = Usergroup.query.filter(Usergroup.id.in_(usergroup_ids)).all()
-        return list(map(lambda obj: {'id': obj.id,
-                                    'label': obj.label,
-                                    }, usergroup_objects_list))
+        return list(map(lambda obj: {'id': obj.id, 'label': obj.label, }, usergroup_objects_list))
 
 # returns list of connection dictionaries
     def get_connections(self):
@@ -148,8 +148,8 @@ class User(db.Model):
 
 # returns list of contact dictionaries
     def get_contacts(self):
-        public_contacts = Contact.query.filter(Contact.public==True).all()
-        created_contacts = Contact.query.filter(Contact.creator_user_id==self.id).all()
+        public_contacts = Contact.query.filter(Contact.public).all()
+        created_contacts = Contact.query.filter(Contact.creator_user_id == self.id).all()
         return list(map(lambda obj: obj.get_dict(), public_contacts + created_contacts))
 
     def __repr__(self):
@@ -160,16 +160,74 @@ class Usergroup(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     label = db.Column(db.String(64), index=True, unique=True)
 
+    @validates('label')
+    def validate_label(self, key, label):
+        if not label:
+            raise AssertionError('No label provided')
+        if Usergroup.query.filter(func.lower(Usergroup.label) == func.lower(label)).first():
+            raise AssertionError('Provided label is already in use')
 
-# returns list or users associated with usergroup
+        return label
+
+    @validates('members')
+    def validate_members(self, key, members):
+        if not isinstance(members, User):
+            raise AssertionError('Provided member is not recognized')
+
+        return members
+
+    @validates('connections')
+    def validate_connections(self, key, connections):
+        if not isinstance(connections, Connection):
+            raise AssertionError('Provided connection is not recognized')
+
+        return connections
+
+    @validates('queries')
+    def validate_queries(self, key, queries):
+        if not isinstance(queries, SqlQuery):
+            raise AssertionError('Provided SQL query is not recognized')
+
+        return queries
+
+    @validates('charts')
+    def validate_charts(self, key, charts):
+        if not isinstance(charts, Chart):
+            raise AssertionError('Provided chart is not recognized')
+
+        return charts
+
+    @validates('reports')
+    def validate_reports(self, key, reports):
+        if not isinstance(reports, Report):
+            raise AssertionError('Provided chart is not recognized')
+
+        return reports
+
     def get_members(self):
         return list(map(lambda obj: obj.get_dict(), self.members))
+
+    def get_connections(self):
+        return list(map(lambda obj: obj.get_dict(), self.connections))
+
+    def get_queries(self):
+        return list(map(lambda obj: obj.get_dict(), self.queries))
+
+    def get_charts(self):
+        return list(map(lambda obj: obj.get_dict(), self.charts))
+
+    def get_reports(self):
+        return list(map(lambda obj: obj.get_dict(), self.reports))
 
     def get_dict(self):
         dict_format = {
             'usergroup_id': self.id,
             'label': self.label,
             'members': self.get_members(),
+            'connections': self.get_connections(),
+            'queries': self.get_queries(),
+            'charts': self.get_charts(),
+            'reports': self.get_reports(),
             }
         return dict_format
 
@@ -177,14 +235,16 @@ class Usergroup(db.Model):
         return '<Usergroup id:{} label:{}>'.format(self.id, self.label)
 
 
-connection_perms = db.Table('connection_perms',
-    db.Column('connection_id', db.Integer, db.ForeignKey('connection.id'), primary_key=True),
-    db.Column('usergroup_id', db.Integer, db.ForeignKey('usergroup.id'), primary_key=True)
-)
+connection_perms = \
+    db.Table('connection_perms',
+             db.Column('connection_id', db.Integer, db.ForeignKey('connection.id'), primary_key=True),
+             db.Column('usergroup_id', db.Integer, db.ForeignKey('usergroup.id'), primary_key=True)
+             )
+
 
 class Connection(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    label = db.Column(db.String(64), index=True, unique=True)
+    label = db.Column(db.String(64), index=True, unique=True, nullable=False)
     db_type = db.Column(db.String(64))
     host = db.Column(db.String(256))
     port = db.Column(db.Integer)
@@ -192,10 +252,8 @@ class Connection(db.Model):
     password = db.Column(db.String(128))
     database_name = db.Column(db.String(256))
     charts = db.relationship('Chart', backref='chart_connection', lazy='dynamic')
-    creator_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), index=True)
-    usergroups = db.relationship("Usergroup",
-                    secondary=connection_perms,
-                    backref="connections")
+    creator_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), index=True, nullable=False)
+    usergroups = db.relationship("Usergroup", secondary=connection_perms, backref="connections")
 
     def get_dict(self):
         dict_format = {
@@ -208,30 +266,35 @@ class Connection(db.Model):
             'password': self.password,
             'db_name': self.database_name,
             'creator': self.creator.get_dict(),
-            'usergroups': helpers.get_dicts_from_usergroups(self.usergroups),
-            'authorized_users': helpers.get_users_from_usergroups(self.usergroups),
             }
         return dict_format
+
+    def get_usergroups(self):
+        usergroups = helpers.get_dicts_from_usergroups(self.usergroups)
+        return usergroups
+
+    def get_authorized_users(self):
+        users = helpers.get_users_from_usergroups(self.usergroups)
+        return users
 
     def __repr__(self):
         return '<Connection label: {}>'.format(self.label)
 
 
-query_perms = db.Table('query_perms',
-    db.Column('query_id', db.Integer, db.ForeignKey('sql_query.id'), primary_key=True),
-    db.Column('usergroup_id', db.Integer, db.ForeignKey('usergroup.id'), primary_key=True)
-)
+query_perms = \
+    db.Table('query_perms',
+             db.Column('query_id', db.Integer, db.ForeignKey('sql_query.id'), primary_key=True),
+             db.Column('usergroup_id', db.Integer, db.ForeignKey('usergroup.id'), primary_key=True)
+             )
 
 
 class SqlQuery(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     label = db.Column(db.String(64), index=True, unique=True)
     raw_sql = db.Column(db.Text)
-    creator_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), index=True)
+    creator_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), index=True, nullable=False)
     charts = db.relationship('Chart', backref='sql_query', lazy='dynamic')
-    usergroups = db.relationship("Usergroup",
-                    secondary=query_perms,
-                    backref="queries")
+    usergroups = db.relationship("Usergroup", secondary=query_perms, backref="queries")
 
     def get_dict(self):
         dict_format = {
@@ -239,18 +302,26 @@ class SqlQuery(db.Model):
             'label': self.label,
             'raw_sql': self.raw_sql,
             'creator': self.creator.get_dict(),
-            'usergroups': helpers.get_dicts_from_usergroups(self.usergroups),
-            'authorized_users': helpers.get_users_from_usergroups(self.usergroups),
         }
         return dict_format
 
+    def get_usergroups(self):
+        usergroups = helpers.get_dicts_from_usergroups(self.usergroups)
+        return usergroups
+
+    def get_authorized_users(self):
+        users = dict(users=helpers.get_users_from_usergroups(self.usergroups))
+        return users
+
     def __repr__(self):
-        return '<SqlQuery {}'.format(self.label)
+        return '<SqlQuery {}:{}'.format(self.id, self.label)
+
 
 chart_perms = db.Table('chart_perms',
-    db.Column('chart_id', db.Integer, db.ForeignKey('chart.id'), primary_key=True),
-    db.Column('usergroup_id', db.Integer, db.ForeignKey('usergroup.id'), primary_key=True)
-)
+                       db.Column('chart_id', db.Integer, db.ForeignKey('chart.id'), primary_key=True),
+                       db.Column('usergroup_id', db.Integer, db.ForeignKey('usergroup.id'), primary_key=True)
+                       )
+
 
 class Chart(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -260,12 +331,10 @@ class Chart(db.Model):
     creator_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), index=True)
     sql_query_id = db.Column(db.Integer, db.ForeignKey('sql_query.id'))
     connection_id = db.Column(db.Integer, db.ForeignKey('connection.id'))
-    usergroups = db.relationship("Usergroup",
-                    secondary=chart_perms,
-                    backref="charts")
+    usergroups = db.relationship("Usergroup", secondary=chart_perms, backref="charts")
 
     def get_dict(self):
-        dict_format =   {
+        dict_format = {
             'chart_id': self.id,
             'label': self.label,
             'creator': self.creator.get_dict(),
@@ -273,18 +342,26 @@ class Chart(db.Model):
             'parameters': self.parameters,
             'sql_query': self.sql_query.get_dict(),
             'connection': self.chart_connection.get_dict(),
-            'usergroups': helpers.get_dicts_from_usergroups(self.usergroups),
-            'authorized_users': helpers.get_users_from_usergroups(self.usergroups),
             }
         return dict_format
+
+    def get_usergroups(self):
+        usergroups = helpers.get_dicts_from_usergroups(self.usergroups)
+        return usergroups
+
+    def get_authorized_users(self):
+        users = dict(users=helpers.get_users_from_usergroups(self.usergroups))
+        return users
 
     def __repr__(self):
         return '<Chart label: {}>'.format(self.label)
 
+
 report_perms = db.Table('report_perms',
-    db.Column('report_id', db.Integer, db.ForeignKey('report.id'), primary_key=True),
-    db.Column('usergroup_id', db.Integer, db.ForeignKey('usergroup.id'), primary_key=True)
-)
+                        db.Column('report_id', db.Integer, db.ForeignKey('report.id'), primary_key=True),
+                        db.Column('usergroup_id', db.Integer, db.ForeignKey('usergroup.id'), primary_key=True)
+                        )
+
 
 class Report(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -294,9 +371,7 @@ class Report(db.Model):
     last_published = db.Column(db.DateTime)
     parameters = db.Column(db.Text)
     publications = db.relationship('Publication', backref='publication_report', lazy='dynamic')
-    usergroups = db.relationship("Usergroup",
-                    secondary=report_perms,
-                    backref="reports")
+    usergroups = db.relationship("Usergroup", secondary=report_perms, backref="reports")
 
     def get_dict(self):
         dict_format = {
@@ -304,13 +379,19 @@ class Report(db.Model):
             'label': self.label,
             'creator': self.creator.get_dict(),
             'created_on': self.created_on,
-            'last_published':self.last_published,
-            'parameters':self.parameters,
-            'publications':self.get_publications(),
-            'usergroups': helpers.get_dicts_from_usergroups(self.usergroups),
-            'authorized_users': helpers.get_users_from_usergroups(self.usergroups),
+            'last_published': self.last_published,
+            'parameters': self.parameters,
+            'publications': self.get_publications(),
             }
         return dict_format
+
+    def get_usergroups(self):
+        usergroups = helpers.get_dicts_from_usergroups(self.usergroups)
+        return usergroups
+
+    def get_authorized_users(self):
+        users = dict(users=helpers.get_users_from_usergroups(self.usergroups))
+        return users
 
     def get_publications(self):
         return list(map(lambda obj: obj.get_dict(), self.publications))
@@ -318,16 +399,20 @@ class Report(db.Model):
     def __repr__(self):
         return '<Report {}>'.format(self.label)
 
-publication_recipients = db.Table('publication_recipients',
-    db.Column('contact_id', db.Integer, db.ForeignKey('contact.id'), primary_key=True),
-    db.Column('publication_id', db.Integer, db.ForeignKey('publication.id'), primary_key=True)
-)
+
+publication_recipients = \
+    db.Table('publication_recipients',
+             db.Column('contact_id', db.Integer, db.ForeignKey('contact.id'), primary_key=True),
+             db.Column('publication_id', db.Integer, db.ForeignKey('publication.id'), primary_key=True)
+             )
+
 
 class Publication(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     type = db.Column(db.String(128))
     creator_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), index=True)
-    frequency = db.Column(db.Enum('manual', 'days_of_week', 'day_of_month', 'daily', 'hourly', 'every_ten_min', name='pub_frequency'), default='manual')
+    frequency = db.Column(db.Enum('manual', 'days_of_week', 'day_of_month', 'daily', 'hourly', 'every_ten_min',
+                                  name='pub_frequency'), default='manual')
     monday = db.Column(db.String(15))
     tuesday = db.Column(db.String(15))
     wednesday = db.Column(db.String(15))
@@ -339,9 +424,7 @@ class Publication(db.Model):
     pub_time = db.Column(db.Time)
     report_id = db.Column(db.Integer, db.ForeignKey('report.id'), index=True)
     notification_or_attachment = db.Column(db.String(32))
-    contact_ids = db.relationship("Contact",
-                    secondary=publication_recipients,
-                    backref="publications")
+    contact_ids = db.relationship("Contact", secondary=publication_recipients, backref="publications")
 
     def get_dict(self):
         dict_format = {
@@ -349,18 +432,18 @@ class Publication(db.Model):
             'type': self.type,
             'creator': self.creator.get_dict(),
             'frequency': self.frequency,
-            'monday':self.monday,
-            'tuesday':self.tuesday,
-            'wednesday':self.wednesday,
-            'thursday':self.thursday,
-            'friday':self.friday,
-            'saturday':self.saturday,
-            'sunday':self.sunday,
-            'day_of_month':self.day_of_month,
-            'publication_time':self.pub_time,
-            'report_id':self.report_id,
-            'notification_or_attachment':self.notification_or_attachment,
-            'recipients':self.get_recipients()
+            'monday': self.monday,
+            'tuesday': self.tuesday,
+            'wednesday': self.wednesday,
+            'thursday': self.thursday,
+            'friday': self.friday,
+            'saturday': self.saturday,
+            'sunday': self.sunday,
+            'day_of_month': self.day_of_month,
+            'publication_time': self.pub_time,
+            'report_id': self.report_id,
+            'notification_or_attachment': self.notification_or_attachment,
+            'recipients': self.get_recipients()
             }
         return dict_format
 
@@ -370,6 +453,7 @@ class Publication(db.Model):
     def __repr__(self):
         return '<Publication {} for report {}'.format(self.type, self.report_id)
 
+
 class Contact(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     first_name = db.Column(db.String(64))
@@ -377,23 +461,22 @@ class Contact(db.Model):
     email = db.Column(db.String(128))
     public = db.Column(db.Boolean)
     creator_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), index=True)
-    publication_ids = db.relationship("Publication",
-                    secondary=publication_recipients,
-                    backref="recipients")
+    publication_ids = db.relationship("Publication", secondary=publication_recipients, backref="recipients")
 
     def get_dict(self):
         dict_format = {
             'contact_id': self.id,
             'first_name': self.first_name,
             'last_name': self.last_name,
-            'email':self.email,
-            'public':self.public,
-            'creator':self.creator.get_dict(),
+            'email': self.email,
+            'public': self.public,
+            'creator': self.creator.get_dict(),
             }
         return dict_format
 
     def __repr__(self):
-        return '<Reicpient {}, {}'.format(self.last_name, self.first_name)
+        return '<Recipient {}, {}'.format(self.last_name, self.first_name)
+
 
 class TokenBlacklist(db.Model):
     id = db.Column(db.Integer, primary_key=True)
