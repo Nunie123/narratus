@@ -332,20 +332,18 @@ def delete_usergroup():
     # Standard user may only delete usergroups when they are the only member.
     if claims['role'] not in ('admin', 'superuser'):
         members = usergroup.get_members()
-        if len(members)>1 or members[0]['username']!=claims['username']:
+        if len(members) > 1 or members[0]['username'] != claims['username']:
             msg = 'User not authorized to delete this usergroup.'
             return jsonify(msg=msg, success=0), 401
+
     # no user can delete their personal usergroup (only auto-deleted when user is deleted)
     if re.match('personal_', usergroup.name):
         return jsonify(msg='Personal usergroups cannot be deleted.', success=0), 401
 
     # delete usergroup
-    try:
-        db.session.delete(usergroup)
-        db.session.commit()
-        return jsonify(msg='Usergroup deleted.', success=1), 200
-    except:
-        return jsonify(msg='Error: Usergroup not deleted.', success=0), 400
+    db.session.delete(usergroup)
+    db.session.commit()
+    return jsonify(msg='Usergroup deleted.', success=1), 200
 
 
 @app.route('/api/get_all_connections', methods=['GET'])
@@ -357,25 +355,10 @@ def get_all_connections():
     if claims['role'] not in ('admin', 'superuser'):
         return jsonify(msg='Must be admin to view all connections.', success=0), 401
 
-    try:
-        raw_connections = Connection.query.all()
-        connections = list(map(lambda obj: obj.get_dict(), raw_connections))
-        return jsonify(msg='Connections provided.', connections=connections, success=1), 200
-    except:
-        return jsonify(msg='Error: connections not provided.', success=0), 400
+    raw_connections = Connection.query.all()
+    connections = list(map(lambda obj: obj.get_dict(), raw_connections))
+    return jsonify(msg='Connections provided.', connections=connections, success=1), 200
 
-
-@app.route('/api/get_user_connections', methods=['GET'])
-@jwt_required
-def get_user_connections():
-    claims = get_jwt_claims()
-    user = User.query.filter(User.id == claims['user_id']).first()
-
-    try:
-        connections = user.get_connections()
-        return jsonify(msg='Connections provided.', connections=connections, success=1), 200
-    except:
-        return jsonify(msg='Error: connections not provided.', success=0), 400
 
 # if no connection_id provided, create new connection
 @app.route('/api/edit_connection', methods=['POST', 'PATCH'])
@@ -385,52 +368,75 @@ def edit_connection():
         return jsonify(msg="Missing JSON in request", success=0), 400
 
     usergroup_ids = list(request.json.get('usergroup_ids', []))
-    connection_dict = request.get_json()[0]
+    conn_data = request.get_json()
+
+    connection_id = conn_data.get('connection_id')
+    label = conn_data.get('label')
+    db_type = conn_data.get('db_type')
+    host = conn_data.get('host')
+    port = conn_data.get('port')
+    username = conn_data.get('username')
+    password = conn_data.get('password')
+    database_name = conn_data.get('database_name')
+    usergroup_ids = list(conn_data.get('usergroup_ids', []))
+    connection = helpers.get_record_from_id(Connection, connection_id)
+    success_text = 'edited'
+
     claims = get_jwt_claims()
-    success_text == 'edited'
-    connection = Connection.query.filter(Connection.id == connection_id).first()
+    requester_user_id = claims['user_id']
+    is_edit_connection_request = connection_id
+    is_create_connection_request = not is_edit_connection_request
 
     # viewer users cannot create new connections
     if claims['role'] == 'viewer':
         msg = 'Current user does not have permission to edit or create connections.'
         return jsonify(msg=msg, success=0), 401
 
-    #Verifying if user intended to edit or create new connection
-    if connection_id and request.method == 'POST':
-        msg='Connection Id provided with POST request.  PATCH should be used to edit existing connections.'
-        return jsonify(msg=msg, success=0), 400
-    if not connection_id and request.method == 'PATCH':
-        msg='No Connection Id provided with PATCH request.  POST should be used to create new connection.'
-        return jsonify(msg=msg, success=0), 400
-    if connection_id and not connection:
-        return jsonify(msg='Connection Id not recognized', success=0), 400
+    if is_edit_connection_request and not connection:
+        return jsonify(msg='Connection id not recognized', success=0), 400
 
-    # validate provided connection data for creating a new connection
-    if not connection:
-        required_fields = ['label', 'db_type', 'host', 'port', 'username', 'password', 'database_name', 'usergroup_ids']
-        field_check = validators.validate_required_fields(required_fields, connection_dict)
-        if not field_check['validated']:
-            return jsonify(msg=field_check['msg'], success=0), 400
-        usergroup_id_check = validators.validate_usergroup_ids(usergroup_ids)
-        if not usergroup_id_check['validated']:
-            return jsonify(msg=usergroup_id_check['msg'], success=0), 400
-        success_text == 'added'
+    if is_edit_connection_request and not helpers.any_args_are_truthy(label, db_type, host, port, username, password
+                                                                      , database_name, usergroup_ids):
+        return jsonify(msg="No changes to usergroup provided.", success=0), 400
+
+    if is_create_connection_request:
         connection = Connection()
+        creator = helpers.get_record_from_id(User, requester_user_id)
+        connection.creator = creator
+        db.session.add(connection)
+        success_text = 'added'
 
-    connection.label = connection_dict.get('label', connection.label)
-    connection.db_type = connection_dict.get('db_type', connection.db_type)
-    connection.host = connection_dict.get('host', connection.host)
-    connection.port = connection_dict.get('port', connection.port)
-    connection.username = connection_dict.get('username', connection.username)
-    connection.password = connection_dict.get('password', connection.password)
-    connection.database_name = connection_dict.get('database_name', connection.database_name)
-    connection.usergroups.append(usergroup_ids)
     try:
-        if success_text == 'added': db.session.add(connection)
+        if label or is_create_connection_request:
+            connection.label = label
+
+        if db_type or is_create_connection_request:
+            connection.db_type = db_type
+
+        if host or is_create_connection_request:
+            connection.host = host
+
+        if port or is_create_connection_request:
+            connection.port = port
+
+        if username or is_create_connection_request:
+            connection.username = username
+
+        if password or is_create_connection_request:
+            connection.password = password
+
+        if database_name or is_create_connection_request:
+            connection.database_name = database_name
+
+        for usergroup_id in usergroup_ids:
+            usergroup = helpers.get_record_from_id(Usergroup, usergroup_id)
+            connection.usergroups.append(usergroup)
+
         db.session.commit()
-        return jsonify(msg='Connection successfully {}.'.format(success_text), success=1), 200
-    except:
-        return jsonify(msg='Error: Connection not {}'.format(success_text), success=0), 400
+        return jsonify(msg='Connection successfully {}.'.format(success_text), connection=connection.get_dict()
+                       , success=1), 200
+    except AssertionError as exception_message:
+        return jsonify(msg='Error: {}.'.format(exception_message), success=0), 400
 
 
 @app.route('/api/delete_connection', methods=['POST'])

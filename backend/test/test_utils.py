@@ -68,7 +68,7 @@ def create_connection(connection_id=None, label='con1', db_type='postgresql', ho
     if creator:
         connection.creator = creator
     else:
-        connection.creator = create_user(username='connection_user')
+        connection.creator = create_user(username='user_{}'.format(label))
 
     db.session.add(connection)
     db.session.commit()

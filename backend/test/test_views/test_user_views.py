@@ -298,7 +298,6 @@ class UserViewTest(TestCase):
         assert not user
         assert not usergroup
 
-
     def test_post_to_delete_user_with_bad_user_id(self):
         bad_user_id = 9999999
 

@@ -305,3 +305,12 @@ class UserViewTest(TestCase):
         usergroup = helpers.get_record_from_id(Usergroup, group_id)
 
         assert response.status_code == 401
+
+    def test_delete_usergroup_remove_usergroup(self):
+        assert False
+
+    def test_cannot_delete_personal_usergroup(self):
+        assert False
+
+    def test_delete_usergroup_requires_admin_privileges(self):
+        assert False

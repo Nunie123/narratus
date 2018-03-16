@@ -35,9 +35,9 @@ class User(db.Model):
 
         is_string = isinstance(username, str)
         is_unique = not User.query.filter(User.username == username).first()
-        # is_only_numbers_and_letters = re.match("^[a-zA-Z0-9]+$", username)
+        is_only_numbers_and_letters = re.match("^[a-zA-Z0-9_]+$", username)
         is_more_than_5_characters = len(username) >= 5
-        is_less_than_20_characters = len(username) <= 20
+        is_less_than_40_characters = len(username) <= 40
 
         if not is_string:
             raise AssertionError('Provided username is invalid')
@@ -45,14 +45,14 @@ class User(db.Model):
         if not is_unique:
             raise AssertionError('Provided username is already in use')
 
-        # if not is_only_numbers_and_letters:
-        #     raise AssertionError('Usernames may only contain letters and numbers')
+        if not is_only_numbers_and_letters:
+            raise AssertionError('Usernames may only contain letters, numbers, and underscores')
 
         if not is_more_than_5_characters:
             raise AssertionError('Username must be 5 or more characters')
 
-        if not is_less_than_20_characters:
-            raise AssertionError('Usernames may only be 20 characters or less')
+        if not is_less_than_40_characters:
+            raise AssertionError('Usernames may only be 40 characters or less')
 
         return username
 
@@ -254,6 +254,83 @@ class Connection(db.Model):
     charts = db.relationship('Chart', backref='chart_connection', lazy='dynamic')
     creator_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), index=True, nullable=False)
     usergroups = db.relationship("Usergroup", secondary=connection_perms, backref="connections")
+
+    @validates('label')
+    def validate_label(self, key, label):
+        if not label:
+            raise AssertionError('No label provided')
+        if Usergroup.query.filter(func.lower(Usergroup.label) == func.lower(label)).first():
+            raise AssertionError('Provided label is already in use')
+
+        return label
+
+    @validates('db_type')
+    def validate_db_type(self, key, db_type):
+        if not db_type:
+            raise AssertionError('No db_type provided')
+        if not isinstance(db_type, str):
+            raise AssertionError('Provided db_type not valid')
+
+        return db_type
+
+    @validates('host')
+    def validate_host(self, key, host):
+        if not host:
+            raise AssertionError('No host provided')
+        if not isinstance(host, str):
+            raise AssertionError('Provided host not valid')
+
+        return host
+
+    @validates('port')
+    def validate_host(self, key, port):
+        if not port:
+            raise AssertionError('No port provided')
+        if not isinstance(port, (str, int)):
+            raise AssertionError('Provided port not valid')
+
+        return port
+
+    @validates('username')
+    def validate_username(self, key, username):
+        if not username:
+            raise AssertionError('No username provided')
+        if not isinstance(username, str):
+            raise AssertionError('Provided username not valid')
+
+        return username
+
+    @validates('password')
+    def validate_password(self, key, password):
+        if not password:
+            raise AssertionError('No password provided')
+        if not isinstance(password, str):
+            raise AssertionError('Provided password not valid')
+
+        return password
+
+    @validates('database_name')
+    def validate_database_name(self, key, database_name):
+        if not database_name:
+            raise AssertionError('No database_name provided')
+        if not isinstance(database_name, str):
+            raise AssertionError('Provided database name not valid')
+
+        return database_name
+
+    @validates('creator')
+    def validate_creator(self, key, creator):
+        if not isinstance(creator, User):
+            raise AssertionError('Provided creator is not recognized')
+
+        return creator
+
+    @validates('usergroups')
+    def validate_usergroups(self, key, usergroups):
+        if not isinstance(usergroups, Usergroup):
+            raise AssertionError('Provided usergroup is not recognized')
+
+        return usergroups
 
     def get_dict(self):
         dict_format = {
