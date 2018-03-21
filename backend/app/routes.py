@@ -1,6 +1,5 @@
 import re
 from flask import request, jsonify
-from sqlalchemy import exc
 from flask_jwt_extended import (
     jwt_required, create_access_token, get_raw_jwt
     , get_jwt_claims
@@ -11,7 +10,6 @@ from backend.app.models import (
 )
 from backend.app import app, jwt, db
 from backend.app import helper_functions as helpers
-from backend.app import validators
 
 
 @jwt.user_claims_loader
@@ -51,11 +49,6 @@ def login():
     password = request.json.get('password', None)
     user = helpers.get_user_from_username(username)
 
-    if not username:
-        return jsonify(msg="Missing username parameter.", success=0), 400
-    if not password:
-        return jsonify(msg="Missing password parameter.", success=0), 400
-
     if user is None or not user.check_password(password):
         return jsonify(msg="Bad username or password", success=0), 401
 
@@ -71,14 +64,11 @@ def login():
 @app.route('/api/logout', methods=['POST'])
 @jwt_required
 def logout():
-    try:
-        jti = get_raw_jwt()['jti']
-        blacklist_jti = TokenBlacklist(jti=jti)
-        db.session.add(blacklist_jti)
-        db.session.commit()
-        return jsonify(msg="Logout successful.", success=1), 200
-    except:
-        return jsonify(msg="Logout failed.", success=0), 400
+    jti = get_raw_jwt()['jti']
+    blacklist_jti = TokenBlacklist(jti=jti)
+    db.session.add(blacklist_jti)
+    db.session.commit()
+    return jsonify(msg="Logout successful.", success=1), 200
 
 
 @app.route('/api/get_all_users', methods=['GET'])
@@ -97,8 +87,32 @@ def get_all_users():
     return jsonify(msg="All users provided", users=users_dict_list, success=1), 200
 
 
-# New user created if no user_id provided
-@app.route('/api/edit_user', methods=['POST', 'PATCH'])
+@app.route('/api/create_user', methods=['POST'])
+@jwt_required
+def create_user():
+    if not request.is_json:
+        return jsonify(msg="Missing JSON in request", success=0), 400
+
+    request_data = request.get_json()
+
+    requester = get_jwt_claims()
+    requester_is_active = requester['is_active']
+
+    if not requester_is_active:
+        return jsonify(msg="Your account is no longer active.", success=0), 401
+
+    # only admin and superusers can create new users
+    if not helpers.requester_has_admin_privileges(requester):
+        return jsonify(msg="User must have admin privileges to create new users.", success=0), 401
+
+    try:
+        user = helpers.create_user_from_dict(request_data)
+        return jsonify(msg='User successfully created.', user=user.get_dict(), success=1), 200
+    except AssertionError as exception_message:
+        return jsonify(msg='Error: {}. User not created'.format(exception_message), success=0), 400
+
+
+@app.route('/api/edit_user', methods=['PATCH'])
 @jwt_required
 def edit_user():
     if not request.is_json:
@@ -328,16 +342,13 @@ def delete_usergroup():
     if not usergroup:
         return jsonify(msg='Usergroup not recoginized.', success=0), 400
 
-    # Admin may delete any usergroup.
-    # Standard user may only delete usergroups when they are the only member.
+    # Only admin can delete usergroups
     if claims['role'] not in ('admin', 'superuser'):
-        members = usergroup.get_members()
-        if len(members) > 1 or members[0]['username'] != claims['username']:
-            msg = 'User not authorized to delete this usergroup.'
-            return jsonify(msg=msg, success=0), 401
+        msg = 'User not authorized to delete this usergroup.'
+        return jsonify(msg=msg, success=0), 401
 
     # no user can delete their personal usergroup (only auto-deleted when user is deleted)
-    if re.match('personal_', usergroup.name):
+    if re.match('personal_', usergroup.label):
         return jsonify(msg='Personal usergroups cannot be deleted.', success=0), 401
 
     # delete usergroup
@@ -367,7 +378,6 @@ def edit_connection():
     if not request.is_json:
         return jsonify(msg="Missing JSON in request", success=0), 400
 
-    usergroup_ids = list(request.json.get('usergroup_ids', []))
     conn_data = request.get_json()
 
     connection_id = conn_data.get('connection_id')
@@ -397,7 +407,7 @@ def edit_connection():
 
     if is_edit_connection_request and not helpers.any_args_are_truthy(label, db_type, host, port, username, password
                                                                       , database_name, usergroup_ids):
-        return jsonify(msg="No changes to usergroup provided.", success=0), 400
+        return jsonify(msg="No changes to connection provided.", success=0), 400
 
     if is_create_connection_request:
         connection = Connection()
@@ -447,26 +457,23 @@ def delete_connection():
 
     connection_id = request.json.get('connection_id', None)
     claims = get_jwt_claims()
-    connection = Connection.query.filter(Connection.id == connection_id)
+    connection = helpers.get_record_from_id(Connection, connection_id)
 
-    #validate connection_id
+    # validate connection_id
     if not connection_id:
         return jsonify(msg='Connection ID not provided.', success=0), 400
     if not connection:
-        return jsonify(msg='Connection not recoginized.', success=0), 400
+        return jsonify(msg='Connection not recognized.', success=0), 400
 
     # viewer users cannot delete connections
     if claims['role'] == 'viewer':
         msg = 'Current user does not have permission to delete connections.'
         return jsonify(msg=msg, success=0), 401
 
-    #delete usergroup
-    try:
-        db.session.delete(connection)
-        db.session.commit()
-        return jsonify(msg='Connection deleted.', success=1), 200
-    except:
-        return jsonify(msg='Error: Connection not deleted.', success=0), 400
+    db.session.delete(connection)
+    db.session.commit()
+    return jsonify(msg='Connection deleted.', success=1), 200
+
 
 @app.route('/api/get_all_queries', methods=['GET'])
 @jwt_required
@@ -477,24 +484,10 @@ def get_all_queries():
     if claims['role'] not in ('admin', 'superuser'):
         return jsonify(msg='Must be admin to view all queries.', success=0), 401
 
-    try:
-        raw_queries = Query.query.all()
-        queries = list(map(lambda obj: obj.get_dict(), raw_queries))
-        return jsonify(msg='Queries provided.', queries=queries, success=1), 200
-    except:
-        return jsonify(msg='Error: queries not provided.', success=0), 400
+    raw_queries = SqlQuery.query.all()
+    queries = list(map(lambda obj: obj.get_dict(), raw_queries))
+    return jsonify(msg='Queries provided.', queries=queries, success=1), 200
 
-@app.route('/api/get_user_queries', methods=['GET'])
-@jwt_required
-def get_user_queries():
-    claims = get_jwt_claims()
-    user = User.query.filter(User.id == claims['user_id']).first()
-
-    try:
-        queries = user.get_queries()
-        return jsonify(msg='Queries provided.', queries=queries, success=1), 200
-    except:
-        return jsonify(msg='Error: queries not provided.', success=0), 400
 
 # if no query_id provided, create new query
 @app.route('/api/edit_query', methods=['POST', 'PATCH'])
@@ -503,52 +496,54 @@ def edit_query():
     if not request.is_json:
         return jsonify(msg="Missing JSON in request", success=0), 400
 
-    usergroup_ids = list(request.json.get('usergroup_ids', []))
-    query_dict = request.get_json()[0]
+    data = request.get_json()
+
+    query_id = data.get('query_id')
+    label = data.get('label')
+    raw_sql = data.get('raw_sql')
+    usergroup_ids = list(data.get('usergroup_ids', []))
+    query = helpers.get_record_from_id(SqlQuery, query_id)
+    success_text = 'edited'
+
     claims = get_jwt_claims()
-    success_text == 'edited'
-    query = Query.query.filter(Query.id == query_id).first()
+    requester_user_id = claims['user_id']
+    is_edit_query_request = query_id
+    is_create_query_request = not is_edit_query_request
 
     # viewer users cannot create new queries
     if claims['role'] == 'viewer':
         msg = 'Current user does not have permission to edit or create queries.'
         return jsonify(msg=msg, success=0), 401
 
-    #Verifying if user intended to edit or create new query
-    if query_id and request.method == 'POST':
-        msg='Query Id provided with POST request.  PATCH should be used to edit existing query.'
-        return jsonify(msg=msg, success=0), 400
-    if not query_id and request.method == 'PATCH':
-        msg='No Query Id provided with PATCH request.  POST should be used to create new query.'
-        return jsonify(msg=msg, success=0), 400
-    if query_id and not query:
-        return jsonify(msg='Query Id not recognized', success=0), 400
+    if is_edit_query_request and not query:
+        return jsonify(msg='SqlQuery id not recognized', success=0), 400
 
-    # validate provided query data for creating a new query
-    if not query:
-        required_fields = ['label', 'raw_sql', 'creator']
-        field_check = validators.validate_required_fields(required_fields, query_dict)
-        if not field_check['validated']:
-            return jsonify(msg=field_check['msg'], success=0), 400
-        user_check = validators.validate_user_exists(query_dict['creator'])
-        if not user_check['validated']:
-            return jsonify(msg=user_check['msg'], success=0), 400
-        usergroup_id_check = validators.validate_usergroup_ids(usergroup_ids)
-        if not usergroup_id_check['validated']:
-            return jsonify(msg=usergroup_id_check['msg'], success=0), 400
-        success_text == 'added'
-        query = Query()
+    if is_edit_query_request and not helpers.any_args_are_truthy(label, raw_sql, usergroup_ids):
+        return jsonify(msg="No changes to query provided.", success=0), 400
 
-    query.label = query_dict.get('label', query.label)
-    query.raw_sql = query_dict.get('raw_sql', query.raw_sql)
-    query.user_id = query_dict.get('creator', query.user_id)
-    query.usergroups.append(usergroup_ids)
+    if is_create_query_request:
+        query = SqlQuery()
+        creator = helpers.get_record_from_id(User, requester_user_id)
+        query.creator = creator
+        db.session.add(query)
+        success_text = 'added'
+
     try:
-        if success_text == 'added': db.session.add(query)
+        if label or is_create_query_request:
+            query.label = label
+
+        if raw_sql or is_create_query_request:
+            query.raw_sql = raw_sql
+
+        for usergroup_id in usergroup_ids:
+            usergroup = helpers.get_record_from_id(Usergroup, usergroup_id)
+            query.usergroups.append(usergroup)
+
         db.session.commit()
-        return jsonify(msg='Query successfully {}.'.format(success_text), success=1), 200
-    except:
-        return jsonify(msg='Error: Query not {}'.format(success_text), success=0), 400
+        return jsonify(msg='SqlQuery successfully {}.'.format(success_text), query=query.get_dict()
+                       , success=1), 200
+    except AssertionError as exception_message:
+        return jsonify(msg='Error: {}.'.format(exception_message), success=0), 400
 
 
 @app.route('/api/delete_query', methods=['POST'])
@@ -559,26 +554,23 @@ def delete_query():
 
     query_id = request.json.get('query_id', None)
     claims = get_jwt_claims()
-    query = Query.query.filter(Query.id == query_id)
+    query = helpers.get_record_from_id(SqlQuery, query_id)
 
-    #validate connection_id
+    # validate query_id
     if not query_id:
         return jsonify(msg='Query ID not provided.', success=0), 400
     if not query:
-        return jsonify(msg='Query not recoginized.', success=0), 400
+        return jsonify(msg='Query not recognized.', success=0), 400
 
-    # viewer users cannot delete connections
+    # viewer users cannot delete queries
     if claims['role'] == 'viewer':
         msg = 'Current user does not have permission to delete queries.'
         return jsonify(msg=msg, success=0), 401
 
-    #delete usergroup
-    try:
-        db.session.delete(query)
-        db.session.commit()
-        return jsonify(msg='Query deleted.', success=1), 200
-    except:
-        return jsonify(msg='Error: Query not deleted.', success=0), 400
+    db.session.delete(query)
+    db.session.commit()
+    return jsonify(msg='Query deleted.', success=1), 200
+
 
 @app.route('/api/get_all_charts', methods=['GET'])
 @jwt_required
@@ -589,24 +581,10 @@ def get_all_charts():
     if claims['role'] not in ('admin', 'superuser'):
         return jsonify(msg='Must be admin to view all queries.', success=0), 401
 
-    try:
-        raw_charts = Chart.query.all()
-        charts = list(map(lambda obj: obj.get_dict(), raw_charts))
-        return jsonify(msg='Charts provided.', charts=charts, success=1), 200
-    except:
-        return jsonify(msg='Error: charts not provided.', success=0), 400
+    raw_charts = Chart.query.all()
+    charts = list(map(lambda obj: obj.get_dict(), raw_charts))
+    return jsonify(msg='Charts provided.', charts=charts, success=1), 200
 
-@app.route('/api/get_user_charts', methods=['GET'])
-@jwt_required
-def get_user_charts():
-    claims = get_jwt_claims()
-    user = User.query.filter(User.id == claims['user_id']).first()
-
-    try:
-        charts = user.get_charts()
-        return jsonify(msg='Charts provided.', charts=charts, success=1), 200
-    except:
-        return jsonify(msg='Error: charts not provided.', success=0), 400
 
 # if no chat_id provided, create new chart
 @app.route('/api/edit_chart', methods=['POST', 'PATCH'])
@@ -615,55 +593,68 @@ def edit_chart():
     if not request.is_json:
         return jsonify(msg="Missing JSON in request", success=0), 400
 
-    usergroup_ids = list(request.json.get('usergroup_ids', []))
-    chart_dict = request.get_json()[0]
+    data = request.get_json()
+
+    chart_id = data.get('chart_id')
+    label = data.get('label')
+    chart_type = data.get('chart_type')
+    parameters = data.get('parameters')
+    sql_query_id = data.get('sql_query_id')
+    connection_id = data.get('connection_id')
+    usergroup_ids = list(data.get('usergroup_ids', []))
+    chart = helpers.get_record_from_id(Chart, chart_id)
+    success_text = 'edited'
+
     claims = get_jwt_claims()
-    success_text == 'edited'
-    chart = Chart.query.filter(Chart.id == chart_id).first()
+    requester_user_id = claims['user_id']
+    is_edit_chart_request = chart_id
+    is_create_chart_request = not is_edit_chart_request
 
     # viewer users cannot create new charts
     if claims['role'] == 'viewer':
         msg = 'Current user does not have permission to edit or create charts.'
         return jsonify(msg=msg, success=0), 401
 
-    #Verifying if user intended to edit or create new chart
-    if chart_id and request.method == 'POST':
-        msg='Chart Id provided with POST request.  PATCH should be used to edit existing chart.'
-        return jsonify(msg=msg, success=0), 400
-    if not chart_id and request.method == 'PATCH':
-        msg='No Chart Id provided with PATCH request.  POST should be used to create new chart.'
-        return jsonify(msg=msg, success=0), 400
-    if chart_id and not chart:
-        return jsonify(msg='Chart Id not recognized', success=0), 400
+    if is_edit_chart_request and not chart:
+        return jsonify(msg='Chart id not recognized', success=0), 400
 
-    # validate provided chart data for creating a new chart
-    if not chart:
-        required_fields = ['label', 'creator', 'type', 'parameters', 'query_id', 'connection_id']
-        field_check = validators.validate_required_fields(required_fields, chart_dict)
-        if not field_check['validated']:
-            return jsonify(msg=field_check['msg'], success=0), 400
-        user_check = validators.validate_user_exists(chart_dict['creator'])
-        if not user_check['validated']:
-            return jsonify(msg=user_check['msg'], success=0), 400
-        usergroup_id_check = validators.validate_usergroup_ids(usergroup_ids)
-        if not usergroup_id_check['validated']:
-            return jsonify(msg=usergroup_id_check['msg'], success=0), 400
-        success_text == 'added'
+    if is_edit_chart_request and not helpers.any_args_are_truthy(label, chart_type, parameters, sql_query_id
+                                                                 , connection_id, usergroup_ids):
+        return jsonify(msg="No changes to chart provided.", success=0), 400
+
+    if is_create_chart_request:
         chart = Chart()
+        creator = helpers.get_record_from_id(User, requester_user_id)
+        chart.creator = creator
+        db.session.add(chart)
+        success_text = 'added'
 
-    chart.label = query_dict.get('label', chart.label)
-    chart.user_id = query_dict.get('creator', chart.user_id)
-    chart.type = query_dict.get('type', chart.type)
-    chart.parameters = query_dict.get('parameters', chart.parameters)
-    chart.query_id = query_dict.get('query_id', chart.query_id)
-    chart.connection_id = query_dict.get('label', chart.connection_id)
-    chart.usergroups.append(usergroup_ids)
     try:
-        if success_text == 'added': db.session.add(chart)
+        if label or is_create_chart_request:
+            chart.label = label
+
+        if chart_type or is_create_chart_request:
+            chart.type = chart_type
+
+        if parameters or is_create_chart_request:
+            chart.parameters = parameters
+
+        if sql_query_id or is_create_chart_request:
+            chart.sql_query_id = sql_query_id
+
+        if connection_id or is_create_chart_request:
+            chart.connection_id = connection_id
+
+        for usergroup_id in usergroup_ids:
+            usergroup = helpers.get_record_from_id(Usergroup, usergroup_id)
+            chart.usergroups.append(usergroup)
+
         db.session.commit()
-        return jsonify(msg='Chart successfully {}.'.format(success_text), success=1), 200
-    except:
-        return jsonify(msg='Error: Chart not {}'.format(success_text), success=0), 400
+        return jsonify(msg='Chart successfully {}.'.format(success_text), chart=chart.get_dict()
+                       , success=1), 200
+    except AssertionError as exception_message:
+        return jsonify(msg='Error: {}.'.format(exception_message), success=0), 400
+
 
 @app.route('/api/delete_chart', methods=['POST'])
 @jwt_required
@@ -673,25 +664,23 @@ def delete_chart():
 
     chart_id = request.json.get('chart_id', None)
     claims = get_jwt_claims()
-    chart = Chart.query.filter(Chart.id == chart_id).first()
+    chart = helpers.get_record_from_id(Chart, chart_id)
 
-    #validate chart_id
+    # validate chart_id
     if not chart_id:
-        return jsonify(msg='Query ID not provided.', success=0), 400
+        return jsonify(msg='Chart ID not provided.', success=0), 400
     if not chart:
-        return jsonify(msg='Query not recoginized.', success=0), 400
+        return jsonify(msg='Chart not recognized.', success=0), 400
 
     # viewer users cannot delete chart
     if claims['role'] == 'viewer':
         msg = 'Current user does not have permission to delete charts.'
         return jsonify(msg=msg, success=0), 401
 
-    try:
-        db.session.delete(chart)
-        db.session.commit()
-        return jsonify(msg='Chart deleted.', success=1), 200
-    except:
-        return jsonify(msg='Error: Chart not deleted.', success=0), 400
+    db.session.delete(chart)
+    db.session.commit()
+    return jsonify(msg='Chart deleted.', success=1), 200
+
 
 @app.route('/api/get_all_reports', methods=['GET'])
 @jwt_required
@@ -702,24 +691,10 @@ def get_all_reports():
     if claims['role'] not in ('admin', 'superuser'):
         return jsonify(msg='Must be admin to view all reports.', success=0), 401
 
-    try:
-        raw_reports = Report.query.all()
-        reports = list(map(lambda obj: obj.get_dict(), raw_reports))
-        return jsonify(msg='Reports provided.', reports=reports, success=1), 200
-    except:
-        return jsonify(msg='Error: reports not provided.', success=0), 400
+    raw_reports = Report.query.all()
+    reports = list(map(lambda obj: obj.get_dict(), raw_reports))
+    return jsonify(msg='Reports provided.', reports=reports, success=1), 200
 
-@app.route('/api/get_user_reports', methods=['GET'])
-@jwt_required
-def get_user_reports():
-    claims = get_jwt_claims()
-    user = User.query.filter(User.id == claims['user_id']).first()
-
-    try:
-        reports = user.get_reports()
-        return jsonify(msg='Reports provided.', reports=reports, success=1), 200
-    except:
-        return jsonify(msg='Error: reports not provided.', success=0), 400
 
 # if no report_id provided, create new report
 @app.route('/api/edit_report', methods=['POST', 'PATCH'])
@@ -728,65 +703,59 @@ def edit_report():
     if not request.is_json:
         return jsonify(msg="Missing JSON in request", success=0), 400
 
-    usergroup_ids = list(request.json.get('usergroup_ids', []))
-    report_dict = request.get_json()[0]
+    data = request.get_json()
+
+    report_id = data.get('report_id')
+    label = data.get('label')
+    parameters = data.get('parameters')
+    publication_ids = list(data.get('publication_ids', []))
+    usergroup_ids = list(data.get('usergroup_ids', []))
+    report = helpers.get_record_from_id(Report, report_id)
+    success_text = 'edited'
+
     claims = get_jwt_claims()
-    success_text == 'edited'
-    report = Report.query.filter(report.id == report_id).first()
-    # publication_dict = report_dict['publication']
-    # recipients_id_list = list(puplication_dict['recipient_ids'])
-    # publication = Publication.query.filter(report.id == report_id).first()
-    # recipients = list(map(lambda user_id: User.query.filter(User.id == user_id).first(), recipients_id_list))
+    requester_user_id = claims['user_id']
+    is_edit_report_request = report_id
+    is_create_report_request = not is_edit_report_request
 
     # viewer users cannot create new reports
     if claims['role'] == 'viewer':
         msg = 'Current user does not have permission to edit or create reports.'
         return jsonify(msg=msg, success=0), 401
 
-    #Verifying if user intended to edit or create new report
-    if report_id and request.method == 'POST':
-        msg='Report Id provided with POST request.  PATCH should be used to edit existing report.'
-        return jsonify(msg=msg, success=0), 400
-    if not report_id and request.method == 'PATCH':
-        msg='No report id provided with PATCH request.  POST should be used to create new report.'
-        return jsonify(msg=msg, success=0), 400
-    if report_id and not report:
-        return jsonify(msg='Report Id not recognized', success=0), 400
+    if is_edit_report_request and not report:
+        return jsonify(msg='Report id not recognized', success=0), 400
 
-    # validate provided report data for creating a new report
-    if not report:
-        required_fields = ['label', 'creator', 'parameters', 'publication']
-        field_check = validators.validate_required_fields(required_fields, report_dict)
-        if not field_check['validated']:
-            return jsonify(msg=field_check['msg'], success=0), 400
-        user_check = validators.validate_user_exists(report_dict['creator'])
-        if not user_check['validated']:
-            return jsonify(msg=user_check['msg'], success=0), 400
-        usergroup_id_check = validators.validate_usergroup_ids(usergroup_ids)
-        if not usergroup_id_check['validated']:
-            return jsonify(msg=usergroup_id_check['msg'], success=0), 400
-        for recipient_id in recipients_id_list:
-            recipients_check = validators.validate_contact_exists(recipient_id)
-            if not recipients_check['validated']:
-                return jsonify(msg=recipients_check['msg'], success=0), 400
-        success_text == 'added'
+    if is_edit_report_request and not helpers.any_args_are_truthy(label, parameters, publication_ids, usergroup_ids):
+        return jsonify(msg="No changes to report provided.", success=0), 400
+
+    if is_create_report_request:
         report = Report()
+        creator = helpers.get_record_from_id(User, requester_user_id)
+        report.creator = creator
+        db.session.add(report)
+        success_text = 'added'
 
-
-
-    report.label = query_dict.get('label', report.label)
-    report.user_id = query_dict.get('creator', report.user_id)
-    report.type = query_dict.get('type', report.type)
-    report.parameters = query_dict.get('parameters', report.parameters)
-    report.query_id = query_dict.get('query_id', report.query_id)
-    report.connection_id = query_dict.get('label', report.connection_id)
-    report.usergroups.append(usergroup_ids)
     try:
-        if success_text == 'added': db.session.add(report)
+        if label or is_create_report_request:
+            report.label = label
+
+        if parameters or is_create_report_request:
+            report.parameters = parameters
+
+        for publication_id in publication_ids:
+            publication = helpers.get_record_from_id(Publication, publication_id)
+            report.usergroups.append(publication)
+
+        for usergroup_id in usergroup_ids:
+            usergroup = helpers.get_record_from_id(Usergroup, usergroup_id)
+            report.usergroups.append(usergroup)
+
         db.session.commit()
-        return jsonify(msg='report successfully {}.'.format(success_text), success=1), 200
-    except:
-        return jsonify(msg='Error: report not {}'.format(success_text), success=0), 400
+        return jsonify(msg='Report successfully {}.'.format(success_text), report=report.get_dict()
+                       , success=1), 200
+    except AssertionError as exception_message:
+        return jsonify(msg='Error: {}.'.format(exception_message), success=0), 400
 
 
 @app.route('/api/delete_report', methods=['POST'])
@@ -799,11 +768,11 @@ def delete_report():
     claims = get_jwt_claims()
     report = Report.query.filter(Report.id == report_id).first()
 
-    #validate report_id
+    # validate report_id
     if not report_id:
         return jsonify(msg='Report ID not provided.', success=0), 400
     if not report:
-        return jsonify(msg='Report not recoginized.', success=0), 400
+        return jsonify(msg='Report not recognized.', success=0), 400
 
     # viewer users cannot delete connections
     if claims['role'] == 'viewer':

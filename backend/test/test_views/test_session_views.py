@@ -45,10 +45,10 @@ class UserSessionTest(TestCase):
         assert response.status_code == 401  # password rejected
 
         response = test_utils.login(client=self.client, username='samson', password='')
-        assert response.status_code == 400  # empty password rejected
+        assert response.status_code == 401  # empty password rejected
 
         response = test_utils.login(client=self.client, username='', password=password)
-        assert response.status_code == 400  # empty username rejected
+        assert response.status_code == 401  # empty username rejected
 
     def test_inactive_user_cannot_log_in(self):
         username = 'inactiveuser'

@@ -19,7 +19,7 @@ class User(db.Model):
     email = db.Column(db.String(120), index=True, nullable=False)
     password_hash = db.Column(db.String(128))
     role = db.Column(db.Enum('viewer', 'writer', 'admin', 'superuser', name='user_roles'), default='viewer')
-    is_active = db.Column(db.Boolean, default=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
     connections = db.relationship('Connection', backref='creator', lazy='dynamic')
     queries = db.relationship('SqlQuery', backref='creator', lazy='dynamic')
     charts = db.relationship('Chart', backref='creator', lazy='dynamic')
@@ -159,6 +159,7 @@ class User(db.Model):
 class Usergroup(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     label = db.Column(db.String(64), index=True, unique=True)
+    personal_group = db.Column(db.Boolean, default=False)
 
     @validates('label')
     def validate_label(self, key, label):
@@ -373,6 +374,31 @@ class SqlQuery(db.Model):
     charts = db.relationship('Chart', backref='sql_query', lazy='dynamic')
     usergroups = db.relationship("Usergroup", secondary=query_perms, backref="queries")
 
+    @validates('label')
+    def validate_label(self, key, label):
+        if not label:
+            raise AssertionError('No label provided')
+        if Usergroup.query.filter(func.lower(Usergroup.label) == func.lower(label)).first():
+            raise AssertionError('Provided label is already in use')
+
+        return label
+
+    @validates('raw_sql')
+    def validate_raw_sql(self, key, raw_sql):
+        if not raw_sql:
+            raise AssertionError('No raw_sql provided')
+        if not isinstance(raw_sql, str):
+            raise AssertionError('raw_sql must be a string')
+
+        return raw_sql
+
+    @validates('usergroups')
+    def validate_usergroups(self, key, usergroups):
+        if not isinstance(usergroups, Usergroup):
+            raise AssertionError('Provided usergroup is not recognized')
+
+        return usergroups
+
     def get_dict(self):
         dict_format = {
             'query_id': self.id,
@@ -409,6 +435,58 @@ class Chart(db.Model):
     sql_query_id = db.Column(db.Integer, db.ForeignKey('sql_query.id'))
     connection_id = db.Column(db.Integer, db.ForeignKey('connection.id'))
     usergroups = db.relationship("Usergroup", secondary=chart_perms, backref="charts")
+
+    @validates('label')
+    def validate_label(self, key, label):
+        if not label:
+            raise AssertionError('No label provided')
+        if Usergroup.query.filter(func.lower(Usergroup.label) == func.lower(label)).first():
+            raise AssertionError('Provided label is already in use')
+
+        return label
+
+    @validates('type')
+    def validate_raw_sql(self, key, type):
+        if not type:
+            raise AssertionError('No chart_type provided')
+        if not isinstance(type, str):
+            raise AssertionError('chart_type must be a string')
+
+        return type
+
+    @validates('parameters')
+    def validate_parameters(self, key, parameters):
+        if not parameters:
+            raise AssertionError('No parameters provided')
+        if not isinstance(parameters, str):
+            raise AssertionError('Provided parameters is wrong data type')
+
+        return parameters
+
+    @validates('sql_query_id')
+    def validate_sql_query_id(self, key, sql_query_id):
+        if not sql_query_id:
+            raise AssertionError('sql_query_id not provided')
+        if not helpers.get_record_from_id(SqlQuery, sql_query_id):
+            raise AssertionError('sql_query_id not recognized')
+
+        return sql_query_id
+
+    @validates('connection_id')
+    def validate_connection_id(self, key, connection_id):
+        if not connection_id:
+            raise AssertionError('connection_id not provided')
+        if not helpers.get_record_from_id(Connection, connection_id):
+            raise AssertionError('connection_id not recognized')
+
+        return connection_id
+
+    @validates('usergroups')
+    def validate_usergroups(self, key, usergroups):
+        if not isinstance(usergroups, Usergroup):
+            raise AssertionError('Provided usergroup is not recognized')
+
+        return usergroups
 
     def get_dict(self):
         dict_format = {
@@ -449,6 +527,31 @@ class Report(db.Model):
     parameters = db.Column(db.Text)
     publications = db.relationship('Publication', backref='publication_report', lazy='dynamic')
     usergroups = db.relationship("Usergroup", secondary=report_perms, backref="reports")
+
+    @validates('label')
+    def validate_label(self, key, label):
+        if not label:
+            raise AssertionError('No label provided')
+        if Usergroup.query.filter(func.lower(Usergroup.label) == func.lower(label)).first():
+            raise AssertionError('Provided label is already in use')
+
+        return label
+
+    @validates('parameters')
+    def validate_parameters(self, key, parameters):
+        if not parameters:
+            raise AssertionError('No parameters provided')
+        if not isinstance(parameters, str):
+            raise AssertionError('Provided parameters is wrong data type')
+
+        return parameters
+
+    @validates('usergroups')
+    def validate_usergroups(self, key, usergroups):
+        if not isinstance(usergroups, Usergroup):
+            raise AssertionError('Provided usergroup is not recognized')
+
+        return usergroups
 
     def get_dict(self):
         dict_format = {

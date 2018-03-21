@@ -84,14 +84,14 @@ def create_query(query_id=None, label='test_query1', raw_sql: str='select * from
     if creator:
         query.creator = creator
     else:
-        query.creator = create_user(username='query_user')
+        query.creator = create_user(username='user_{}'.format(label))
 
     db.session.add(query)
     db.session.commit()
     return query
 
 
-def create_chart(creator=None, label='test_chart1', chart_id=None, type='bar', parameters=None
+def create_chart(creator=None, label='test_chart1', chart_id=None, type='bar', parameters='javascript stuff'
                  , sql_query: SqlQuery=None, chart_connection: Connection=None):
     chart = Chart(label=label, type=type, parameters=parameters)
 
@@ -101,17 +101,17 @@ def create_chart(creator=None, label='test_chart1', chart_id=None, type='bar', p
     if creator:
         chart.creator = creator
     else:
-        chart.creator = create_user(username='chart_user')
+        chart.creator = create_user(username='user_{}'.format(label))
 
     if sql_query:
         chart.sql_query = sql_query
     else:
-        chart.sql_query = create_query(label='chart_query')
+        chart.sql_query = create_query(label='query_{}'.format(label))
 
     if chart_connection:
         chart.chart_connection = chart_connection
     else:
-        chart.chart_connection = create_connection(label='chart_connection')
+        chart.chart_connection = create_connection(label='connection_{}'.format(label))
 
     db.session.add(chart)
     db.session.commit()
@@ -119,7 +119,7 @@ def create_chart(creator=None, label='test_chart1', chart_id=None, type='bar', p
 
 
 def create_report(creator=None, label='test_report1', report_id=None, last_published=None
-                  , parameters=None):
+                  , parameters='JS stuff'):
     report = Report(label=label, parameters=parameters, last_published=last_published)
 
     if report_id:
@@ -128,7 +128,7 @@ def create_report(creator=None, label='test_report1', report_id=None, last_publi
     if creator:
         report.creator = creator
     else:
-        report.creator = create_user(username='report_user')
+        report.creator = create_user(username='user_{}'.format(label))
 
     db.session.add(report)
     db.session.commit()

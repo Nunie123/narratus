@@ -79,6 +79,18 @@ class UserViewTest(TestCase):
                                      , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
 
+    def post_to_delete_connections(self, connection_id, token_type='admin'):
+        if token_type == 'writer':
+            token = self.writer_token
+        elif token_type == 'viewer':
+            token = self.viewer_token
+        else:
+            token = self.admin_token
+        data = dict(connection_id=connection_id)
+        response = self.client.post('/api/delete_connection', data=json.dumps(data), content_type='application/json'
+                                    , headers={'Authorization': 'Bearer {}'.format(token)})
+        return response
+
     def test_get_all_connections_returns_all_connections(self):
         test_utils.create_connection(label='ug101')
         test_utils.create_connection(label='ug201')
@@ -191,8 +203,22 @@ class UserViewTest(TestCase):
         assert response.status_code == 400
         assert not connection.usergroups
 
-    def test_delete_connecton_removes_connection(self):
-        assert False
+    def test_delete_connection_removes_connection(self):
+        connection_id = 1234
+        test_utils.create_connection(connection_id=connection_id)
+
+        self.post_to_delete_connections(connection_id=connection_id)
+
+        connection = helpers.get_record_from_id(Connection, connection_id)
+
+        assert not connection
 
     def test_delete_connection_requires_writer_privileges(self):
-        assert False
+        connection_id = 1234
+        test_utils.create_connection(connection_id=connection_id)
+
+        self.post_to_delete_connections(connection_id=connection_id, token_type='viewer')
+
+        connection = helpers.get_record_from_id(Connection, connection_id)
+
+        assert connection

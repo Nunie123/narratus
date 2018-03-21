@@ -68,6 +68,16 @@ class UserViewTest(TestCase):
                                      , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
 
+    def post_to_delete_usergroup(self, usergroup_id, token_type='admin'):
+        if token_type == 'writer':
+            token = self.writer_token
+        else:
+            token = self.admin_token
+        data = dict(usergroup_id=usergroup_id)
+        response = self.client.post('/api/delete_usergroup', data=json.dumps(data), content_type='application/json'
+                                    , headers={'Authorization': 'Bearer {}'.format(token)})
+        return response
+
     def test_get_all_usergroups_returns_all_usergroups(self):
         test_utils.create_usergroup(label='ug101')
         test_utils.create_usergroup(label='ug201')
@@ -307,10 +317,32 @@ class UserViewTest(TestCase):
         assert response.status_code == 401
 
     def test_delete_usergroup_remove_usergroup(self):
-        assert False
+        usergroup_id = 42
+        test_utils.create_usergroup(usergroup_id=usergroup_id)
+
+        self.post_to_delete_usergroup(usergroup_id=usergroup_id)
+
+        usergroup = helpers.get_record_from_id(Usergroup, usergroup_id)
+
+        assert not usergroup
 
     def test_cannot_delete_personal_usergroup(self):
-        assert False
+        usergroup_id = 42
+        label = 'samson'
+        test_utils.create_usergroup(usergroup_id=usergroup_id, label=label, personal_group=True)
+
+        self.post_to_delete_usergroup(usergroup_id=usergroup_id)
+
+        usergroup = helpers.get_record_from_id(Usergroup, usergroup_id)
+
+        assert usergroup
 
     def test_delete_usergroup_requires_admin_privileges(self):
-        assert False
+        usergroup_id = 42
+        test_utils.create_usergroup(usergroup_id=usergroup_id)
+
+        self.post_to_delete_usergroup(usergroup_id=usergroup_id, token_type='writer')
+
+        usergroup = helpers.get_record_from_id(Usergroup, usergroup_id)
+
+        assert usergroup

@@ -146,19 +146,16 @@ class UserModelTest(TestCase):
     def test_get_charts(self):
         usergroup1 = test_utils.create_usergroup(label='group1')
         user = test_utils.create_user(username='samson')
-        query = SqlQuery(label='q1', creator=user)
-        connection = Connection(label='con1', creator=user)
-        chart1 = Chart(label='chart1', creator=user, sql_query=query, chart_connection=connection)
+        chart_label = 'test1'
+        chart1 = test_utils.create_chart(label=chart_label)
         chart1.usergroups.append(usergroup1)
         user.usergroups.append(usergroup1)
-        db.session.add(chart1)
         db.session.commit()
 
         charts = user.get_charts()
 
         assert len(charts) == 1
-        assert charts[0]['label'] == 'chart1'
-        assert charts[0]['creator']['username'] == 'samson'
+        assert charts[0]['label'] == chart_label
 
     def test_get_reports(self):
         usergroup1 = test_utils.create_usergroup(label='group1')

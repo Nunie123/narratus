@@ -37,7 +37,7 @@ class UserViewTest(TestCase):
         db.session.remove()
         db.drop_all()
 
-    def post_to_edit_user(self, username, password='Secret123', email='u@example.com', role='admin'
+    def post_to_create_user(self, username, password='Secret123', email='u@example.com', role='admin'
                           , usergroup_ids=list(), token_type='admin'):
         if token_type == 'writer':
             token = self.writer_token
@@ -45,7 +45,7 @@ class UserViewTest(TestCase):
             token = self.admin_token
         data = dict(username=username, password=password, role=role, email=email
                     , usergroup_ids=usergroup_ids)
-        response = self.client.post('/api/edit_user', data=json.dumps(data), content_type='application/json'
+        response = self.client.post('/api/create_user', data=json.dumps(data), content_type='application/json'
                                     , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
 
@@ -89,7 +89,7 @@ class UserViewTest(TestCase):
             starting_user_count = len(User.query.all())
 
             username = 'test123'
-            response = self.post_to_edit_user(username=username)
+            response = self.post_to_create_user(username=username)
             response_dict = json.loads(response.data)
             users = User.query.all()
 
@@ -100,7 +100,7 @@ class UserViewTest(TestCase):
     def test_create_new_user_with_blank_email(self):
         with db.session.no_autoflush:
             starting_user_count = len(User.query.all())
-            response = self.post_to_edit_user(username='test1', email='')
+            response = self.post_to_create_user(username='test1', email='')
             response_dict = json.loads(response.data)
             users = User.query.all()
 
@@ -110,7 +110,7 @@ class UserViewTest(TestCase):
     def test_create_new_user_with_blank_username(self):
         with db.session.no_autoflush:
             starting_user_count = len(User.query.all())
-            response = self.post_to_edit_user(username='')
+            response = self.post_to_create_user(username='')
             response_dict = json.loads(response.data)
             users = User.query.all()
 
@@ -120,7 +120,7 @@ class UserViewTest(TestCase):
     def test_create_new_user_with_blank_password(self):
         with db.session.no_autoflush:
             starting_user_count = len(User.query.all())
-            response = self.post_to_edit_user(username='test1', password='')
+            response = self.post_to_create_user(username='test1', password='')
             response_dict = json.loads(response.data)
             users = User.query.all()
 
@@ -130,7 +130,7 @@ class UserViewTest(TestCase):
     def test_create_new_from_non_admin_account(self):
         starting_user_count = len(User.query.all())
 
-        response = self.post_to_edit_user(username='test1', token_type='writer')
+        response = self.post_to_create_user(username='test1', token_type='writer')
         response_dict = json.loads(response.data)
         users = User.query.all()
 
@@ -149,7 +149,7 @@ class UserViewTest(TestCase):
 
             username = 'test123'
             usergroup_ids = [101, 102]
-            response = self.post_to_edit_user(username=username, usergroup_ids=usergroup_ids)
+            response = self.post_to_create_user(username=username, usergroup_ids=usergroup_ids)
             response_dict = json.loads(response.data)
             users = User.query.all()
 
@@ -163,7 +163,7 @@ class UserViewTest(TestCase):
 
             username = 'test1'
             usergroup_ids = [99999, 888888]
-            response = self.post_to_edit_user(username=username, usergroup_ids=usergroup_ids)
+            response = self.post_to_create_user(username=username, usergroup_ids=usergroup_ids)
             response_dict = json.loads(response.data)
             users = User.query.all()
 
@@ -249,7 +249,7 @@ class UserViewTest(TestCase):
         username = 'writer'
         non_admin = User.query.filter(User.username == username).first()
         user_id = non_admin.id
-        new_username = 'The Best Writer'
+        new_username = 'TheBestWriter'
 
         response = self.patch_to_edit_user(user_id=user_id, username=new_username, token_type=username, role='')
         response_dict = json.loads(response.data)
@@ -272,14 +272,12 @@ class UserViewTest(TestCase):
     def test_create_user_creates_personal_usergroup(self):
         with db.session.no_autoflush:
             username = 'new_user'
-            response = self.post_to_edit_user(username=username)
-            response_dict = json.loads(response.data)
+            response = self.post_to_create_user(username=username)
 
             user = User.query.filter(User.username == username).first()
             usergroups = user.get_dicts_from_usergroups()
-            usergroup_ids = user.get_usergroup_ids()
             personal_usergroup = [usergroup for usergroup in usergroups if
-                                  usergroup['label'] == 'personal_{}'.format(username)]
+                                  usergroup['label'] == username]
 
         assert personal_usergroup
 
