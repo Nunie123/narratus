@@ -239,11 +239,8 @@ class UserViewTest(TestCase):
         self.patch_to_edit_user(user_id=user_id, usergroup_ids=usergroup_ids)
 
         user = User.query.filter(User.id == user_id).first()
-        usergroups = user.get_dicts_from_usergroups()
-        personal_usergroup = \
-            [usergroup for usergroup in usergroups if usergroup['label'] == 'personal_{}'.format(username)]
 
-        assert personal_usergroup
+        assert user.get_personal_usergroup()
 
     def test_non_admin_can_edit_self(self):
         username = 'writer'
@@ -251,7 +248,7 @@ class UserViewTest(TestCase):
         user_id = non_admin.id
         new_username = 'TheBestWriter'
 
-        response = self.patch_to_edit_user(user_id=user_id, username=new_username, token_type=username, role='')
+        response = self.patch_to_edit_user(user_id=user_id, username=new_username, token_type=username, role='writer')
         response_dict = json.loads(response.data)
         user = helpers.get_record_from_id(User, user_id)
 
@@ -284,8 +281,8 @@ class UserViewTest(TestCase):
     def test_post_to_delete_user_with_valid_data(self):
         user_id = 42
         username = 'archibald'
-        test_utils.create_user(user_id=user_id, username=username)
-        personal_usergroup = Usergroup.query.filter(Usergroup.label == 'personal_{}'.format(username)).first()
+        user = test_utils.create_user(user_id=user_id, username=username)
+        personal_usergroup = user.get_personal_usergroup()
         usergroup_id = personal_usergroup.id
 
         response = self.post_to_delete_user(user_id=user_id)

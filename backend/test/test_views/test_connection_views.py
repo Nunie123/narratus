@@ -50,9 +50,9 @@ class UserViewTest(TestCase):
                                    , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
 
-    def post_to_edit_connections(self, label='conn42', db_type='postgresql', host='www.example.com', port='1492'
-                                 , username='conn_user1', password='secret', database_name='dev'
-                                 , token_type='admin'):
+    def post_to_create_connection(self, label='conn42', db_type='postgresql', host='www.example.com', port='1492'
+                                  , username='conn_user1', password='secret', database_name='dev'
+                                  , token_type='admin'):
         if token_type == 'writer':
             token = self.writer_token
         elif token_type == 'viewer':
@@ -61,11 +61,11 @@ class UserViewTest(TestCase):
             token = self.admin_token
         data = dict(label=label, db_type=db_type, host=host, port=port, username=username, password=password
                     , database_name=database_name)
-        response = self.client.post('/api/edit_connection', data=json.dumps(data), content_type='application/json'
+        response = self.client.post('/api/create_connection', data=json.dumps(data), content_type='application/json'
                                     , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
 
-    def patch_to_edit_connections(self, connection_id, label='conn42', db_type='postgresql', host='www.example.com'
+    def patch_to_edit_connection(self, connection_id, label='conn42', db_type='postgresql', host='www.example.com'
                                   , port='1492', usergroup_ids=list()
                                   , username='conn_user1', password='secret', database_name='dev'
                                   , token_type='admin'):
@@ -79,7 +79,7 @@ class UserViewTest(TestCase):
                                      , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
 
-    def post_to_delete_connections(self, connection_id, token_type='admin'):
+    def post_to_delete_connection(self, connection_id, token_type='admin'):
         if token_type == 'writer':
             token = self.writer_token
         elif token_type == 'viewer':
@@ -112,7 +112,7 @@ class UserViewTest(TestCase):
     def test_create_connection_with_valid_data(self):
         with db.session.no_autoflush:
             label = 'my connection'
-            response = self.post_to_edit_connections(label=label)
+            response = self.post_to_create_connection(label=label)
             response_dict = json.loads(response.data)
 
             connection = Connection.query.filter(Connection.label == label).first()
@@ -123,7 +123,7 @@ class UserViewTest(TestCase):
     def test_create_connection_with_invalid_data(self):
         with db.session.no_autoflush:
             label = ''
-            response = self.post_to_edit_connections(label=label)
+            response = self.post_to_create_connection(label=label)
             response_dict = json.loads(response.data)
 
             connection = Connection.query.filter(Connection.label == label).first()
@@ -134,7 +134,7 @@ class UserViewTest(TestCase):
     def test_create_connection_requires_writer_privileges(self):
         with db.session.no_autoflush:
             label = 'my_connection'
-            response = self.post_to_edit_connections(label=label, token_type='viewer')
+            response = self.post_to_create_connection(label=label, token_type='viewer')
             response_dict = json.loads(response.data)
 
             connection = Connection.query.filter(Connection.label == label).first()
@@ -148,7 +148,7 @@ class UserViewTest(TestCase):
         test_utils.create_connection(label=starting_label, connection_id=conn_id)
 
         new_label = 'my_new_conn'
-        response = self.patch_to_edit_connections(label=new_label, connection_id=conn_id)
+        response = self.patch_to_edit_connection(label=new_label, connection_id=conn_id)
         connection = helpers.get_record_from_id(Connection, conn_id)
         connection_label = connection.label
 
@@ -158,7 +158,7 @@ class UserViewTest(TestCase):
     def test_edit_label_with_bad_connection_id(self):
         conn_id = 999999
 
-        response = self.patch_to_edit_connections(connection_id=conn_id)
+        response = self.patch_to_edit_connection(connection_id=conn_id)
         connection = helpers.get_record_from_id(Connection, conn_id)
 
         assert response.status_code == 400
@@ -170,7 +170,7 @@ class UserViewTest(TestCase):
         test_utils.create_connection(label=starting_label, connection_id=conn_id)
 
         new_label = ''
-        response = self.patch_to_edit_connections(label=new_label, connection_id=conn_id)
+        response = self.patch_to_edit_connection(label=new_label, connection_id=conn_id)
         response_dict = json.loads(response.data)
         connection = helpers.get_record_from_id(Connection, conn_id)
         connection_label = connection.label
@@ -184,7 +184,7 @@ class UserViewTest(TestCase):
         connection_id = 1234
         test_utils.create_connection(connection_id=connection_id)
 
-        response = self.patch_to_edit_connections(connection_id=connection_id, usergroup_ids=[usergroup_id])
+        response = self.patch_to_edit_connection(connection_id=connection_id, usergroup_ids=[usergroup_id])
 
         connection = helpers.get_record_from_id(Connection, connection_id)
 
@@ -196,7 +196,7 @@ class UserViewTest(TestCase):
         connection_id = 1234
         test_utils.create_connection(connection_id=connection_id)
 
-        response = self.patch_to_edit_connections(connection_id=connection_id, usergroup_ids=[99999])
+        response = self.patch_to_edit_connection(connection_id=connection_id, usergroup_ids=[99999])
 
         connection = helpers.get_record_from_id(Connection, connection_id)
 
@@ -207,7 +207,7 @@ class UserViewTest(TestCase):
         connection_id = 1234
         test_utils.create_connection(connection_id=connection_id)
 
-        self.post_to_delete_connections(connection_id=connection_id)
+        self.post_to_delete_connection(connection_id=connection_id)
 
         connection = helpers.get_record_from_id(Connection, connection_id)
 
@@ -217,7 +217,7 @@ class UserViewTest(TestCase):
         connection_id = 1234
         test_utils.create_connection(connection_id=connection_id)
 
-        self.post_to_delete_connections(connection_id=connection_id, token_type='viewer')
+        self.post_to_delete_connection(connection_id=connection_id, token_type='viewer')
 
         connection = helpers.get_record_from_id(Connection, connection_id)
 

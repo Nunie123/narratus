@@ -50,7 +50,7 @@ class UserViewTest(TestCase):
                                    , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
 
-    def post_to_edit_reports(self, label='conn42', report_type='bar', parameters='test str', sql_query_id=None
+    def post_to_create_report(self, label='conn42', report_type='bar', parameters='test str', sql_query_id=None
                             , connection_id=None, token_type='admin'):
         if token_type == 'writer':
             token = self.writer_token
@@ -61,11 +61,11 @@ class UserViewTest(TestCase):
 
         data = dict(label=label, report_type=report_type, parameters=parameters, sql_query_id=sql_query_id
                     , connection_id=connection_id)
-        response = self.client.post('/api/edit_report', data=json.dumps(data), content_type='application/json'
+        response = self.client.post('/api/create_report', data=json.dumps(data), content_type='application/json'
                                     , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
 
-    def patch_to_edit_reports(self, report_id, label='conn42', report_type='bar', parameters='test str', sql_query_id=None
+    def patch_to_edit_report(self, report_id, label='conn42', report_type='bar', parameters='test str', sql_query_id=None
                              , connection_id=None, usergroup_ids=list(), token_type='admin'):
         if token_type == 'writer':
             token = self.writer_token
@@ -116,7 +116,7 @@ class UserViewTest(TestCase):
             test_utils.create_connection(connection_id=connection_id)
 
             label = 'my report'
-            response = self.post_to_edit_reports(label=label, sql_query_id=sql_query_id, connection_id=connection_id)
+            response = self.post_to_create_report(label=label, sql_query_id=sql_query_id, connection_id=connection_id)
             response_dict = json.loads(response.data)
 
             report = Report.query.filter(Report.label == label).first()
@@ -133,7 +133,7 @@ class UserViewTest(TestCase):
             test_utils.create_connection(connection_id=connection_id)
 
             label = ''
-            response = self.post_to_edit_reports(label=label, sql_query_id=sql_query_id, connection_id=connection_id)
+            response = self.post_to_create_report(label=label, sql_query_id=sql_query_id, connection_id=connection_id)
             response_dict = json.loads(response.data)
 
             report = Report.query.filter(Report.label == label).first()
@@ -150,7 +150,7 @@ class UserViewTest(TestCase):
             test_utils.create_connection(connection_id=connection_id)
 
             label = 'my report'
-            response = self.post_to_edit_reports(label=label, sql_query_id=sql_query_id, connection_id=connection_id
+            response = self.post_to_create_report(label=label, sql_query_id=sql_query_id, connection_id=connection_id
                                                 , token_type='viewer')
             response_dict = json.loads(response.data)
 
@@ -165,7 +165,7 @@ class UserViewTest(TestCase):
         test_utils.create_report(label=starting_label, report_id=conn_id)
 
         new_label = 'my_new_conn'
-        response = self.patch_to_edit_reports(label=new_label, report_id=conn_id)
+        response = self.patch_to_edit_report(label=new_label, report_id=conn_id)
         report = helpers.get_record_from_id(Report, conn_id)
         report_label = report.label
 
@@ -175,7 +175,7 @@ class UserViewTest(TestCase):
     def test_edit_label_with_bad_report_id(self):
         conn_id = 999999
 
-        response = self.patch_to_edit_reports(report_id=conn_id)
+        response = self.patch_to_edit_report(report_id=conn_id)
         report = helpers.get_record_from_id(Report, conn_id)
 
         assert response.status_code == 400
@@ -187,7 +187,7 @@ class UserViewTest(TestCase):
         test_utils.create_report(label=starting_label, report_id=conn_id)
 
         new_label = ''
-        response = self.patch_to_edit_reports(label=new_label, report_id=conn_id)
+        response = self.patch_to_edit_report(label=new_label, report_id=conn_id)
         response_dict = json.loads(response.data)
         report = helpers.get_record_from_id(Report, conn_id)
         report_label = report.label
@@ -202,7 +202,7 @@ class UserViewTest(TestCase):
             report_id = 1234
             test_utils.create_report(report_id=report_id)
 
-            response = self.patch_to_edit_reports(report_id=report_id, usergroup_ids=[usergroup_id])
+            response = self.patch_to_edit_report(report_id=report_id, usergroup_ids=[usergroup_id])
 
             report = helpers.get_record_from_id(Report, report_id)
 
@@ -214,7 +214,7 @@ class UserViewTest(TestCase):
         report_id = 1234
         test_utils.create_report(report_id=report_id)
 
-        response = self.patch_to_edit_reports(report_id=report_id, usergroup_ids=[99999])
+        response = self.patch_to_edit_report(report_id=report_id, usergroup_ids=[99999])
 
         report = helpers.get_record_from_id(Report, report_id)
 

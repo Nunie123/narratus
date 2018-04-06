@@ -19,6 +19,12 @@ class UserViewTest(TestCase):
         self.client = app.test_client()
         db.create_all()
 
+        # log in as viewer
+        login_response = test_utils.create_user_and_login(username='viewer', password='Secret123', role='viewer'
+                                                          , client=self.client)
+        login_response_dict = json.loads(login_response.data)
+        self.viewer_token = login_response_dict['access_token']
+
         # log in as writer
         login_response = test_utils.create_user_and_login(username='writer', password='Secret123', role='writer'
                                                           , client=self.client)
@@ -44,13 +50,16 @@ class UserViewTest(TestCase):
                                    , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
 
-    def post_to_edit_usergroups(self, label='group42', token_type='admin'):
+    def post_to_create_usergroups(self, label='group42', personal_group=False, token_type='admin'):
         if token_type == 'writer':
             token = self.writer_token
+        elif token_type == 'viewer':
+            token = self.viewer_token
         else:
             token = self.admin_token
-        data = dict(label=label)
-        response = self.client.post('/api/edit_usergroup', data=json.dumps(data), content_type='application/json'
+
+        data = dict(label=label, personal_group=personal_group)
+        response = self.client.post('/api/create_usergroup', data=json.dumps(data), content_type='application/json'
                                     , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
 
@@ -99,7 +108,7 @@ class UserViewTest(TestCase):
     def test_create_usergroup_with_valid_data(self):
         with db.session.no_autoflush:
             label = 'my usergroup'
-            response = self.post_to_edit_usergroups(label=label)
+            response = self.post_to_create_usergroups(label=label)
             response_dict = json.loads(response.data)
 
             usergroup = Usergroup.query.filter(Usergroup.label == label).first()
@@ -110,7 +119,7 @@ class UserViewTest(TestCase):
     def test_create_usergroup_with_invalid_data(self):
         with db.session.no_autoflush:
             label = ''
-            response = self.post_to_edit_usergroups(label=label)
+            response = self.post_to_create_usergroups(label=label)
             response_dict = json.loads(response.data)
 
             usergroup = Usergroup.query.filter(Usergroup.label == label).first()
@@ -118,10 +127,10 @@ class UserViewTest(TestCase):
         assert response.status_code == 400
         assert not usergroup
 
-    def test_create_usergroup_requires_admin_privileges(self):
+    def test_create_usergroup_requires_write_privileges(self):
         with db.session.no_autoflush:
             label = 'my usergroup'
-            response = self.post_to_edit_usergroups(label=label, token_type='writer')
+            response = self.post_to_create_usergroups(label=label, token_type='viewer')
             response_dict = json.loads(response.data)
 
             usergroup = Usergroup.query.filter(Usergroup.label == label).first()
@@ -152,11 +161,11 @@ class UserViewTest(TestCase):
         assert not usergroup
 
     def test_edit_label_with_bad_label(self):
-        starting_label = 'my group'
+        starting_label = 'my_group'
         group_id = 42
         test_utils.create_usergroup(label=starting_label, usergroup_id=group_id)
 
-        new_label = ''
+        new_label = True
         response = self.patch_to_edit_usergroups(label=new_label, usergroup_id=group_id)
         response_dict = json.loads(response.data)
         usergroup = helpers.get_record_from_id(Usergroup, group_id)
@@ -299,20 +308,13 @@ class UserViewTest(TestCase):
         assert response.status_code == 400
         assert not usergroup.reports
 
-    def test_cannot_create_personal_usergroups(self):
-        label = 'personal_user42'
-        response = self.post_to_edit_usergroups(label=label)
-
-        assert response.status_code == 401
-
     def test_cannot_edit_personal_usergroups(self):
         starting_label = 'personal_user42'
         group_id = 42
-        test_utils.create_usergroup(label=starting_label, usergroup_id=group_id)
+        test_utils.create_usergroup(label=starting_label, usergroup_id=group_id, personal_group=True)
 
         new_label = 'my new group'
         response = self.patch_to_edit_usergroups(label=new_label, usergroup_id=group_id)
-        usergroup = helpers.get_record_from_id(Usergroup, group_id)
 
         assert response.status_code == 401
 

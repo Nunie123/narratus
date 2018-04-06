@@ -50,8 +50,8 @@ class UserViewTest(TestCase):
                                    , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
 
-    def post_to_edit_charts(self, label='conn42', chart_type='bar', parameters='test str', sql_query_id=None
-                            , connection_id=None, token_type='admin'):
+    def post_to_create_charts(self, label='conn42', type='bar', parameters='test str', sql_query_id=None
+                              , connection_id=None, token_type='admin'):
         if token_type == 'writer':
             token = self.writer_token
         elif token_type == 'viewer':
@@ -59,19 +59,19 @@ class UserViewTest(TestCase):
         else:
             token = self.admin_token
 
-        data = dict(label=label, chart_type=chart_type, parameters=parameters, sql_query_id=sql_query_id
+        data = dict(label=label, type=type, parameters=parameters, sql_query_id=sql_query_id
                     , connection_id=connection_id)
-        response = self.client.post('/api/edit_chart', data=json.dumps(data), content_type='application/json'
+        response = self.client.post('/api/create_chart', data=json.dumps(data), content_type='application/json'
                                     , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
 
-    def patch_to_edit_charts(self, chart_id, label='conn42', chart_type='bar', parameters='test str', sql_query_id=None
+    def patch_to_edit_charts(self, chart_id, label='conn42', type='bar', parameters='test str', sql_query_id=None
                              , connection_id=None, usergroup_ids=list(), token_type='admin'):
         if token_type == 'writer':
             token = self.writer_token
         else:
             token = self.admin_token
-        data = dict(label=label, chart_type=chart_type, parameters=parameters, sql_query_id=sql_query_id
+        data = dict(label=label, type=type, parameters=parameters, sql_query_id=sql_query_id
                     , connection_id=connection_id, chart_id=chart_id, usergroup_ids=usergroup_ids)
         response = self.client.patch('/api/edit_chart', data=json.dumps(data), content_type='application/json'
                                      , headers={'Authorization': 'Bearer {}'.format(token)})
@@ -116,7 +116,7 @@ class UserViewTest(TestCase):
             test_utils.create_connection(connection_id=connection_id)
 
             label = 'my chart'
-            response = self.post_to_edit_charts(label=label, sql_query_id=sql_query_id, connection_id=connection_id)
+            response = self.post_to_create_charts(label=label, sql_query_id=sql_query_id, connection_id=connection_id)
             response_dict = json.loads(response.data)
 
             chart = Chart.query.filter(Chart.label == label).first()
@@ -133,7 +133,7 @@ class UserViewTest(TestCase):
             test_utils.create_connection(connection_id=connection_id)
 
             label = ''
-            response = self.post_to_edit_charts(label=label, sql_query_id=sql_query_id, connection_id=connection_id)
+            response = self.post_to_create_charts(label=label, sql_query_id=sql_query_id, connection_id=connection_id)
             response_dict = json.loads(response.data)
 
             chart = Chart.query.filter(Chart.label == label).first()
@@ -150,7 +150,7 @@ class UserViewTest(TestCase):
             test_utils.create_connection(connection_id=connection_id)
 
             label = 'my chart'
-            response = self.post_to_edit_charts(label=label, sql_query_id=sql_query_id, connection_id=connection_id
+            response = self.post_to_create_charts(label=label, sql_query_id=sql_query_id, connection_id=connection_id
                                                 , token_type='viewer')
             response_dict = json.loads(response.data)
 

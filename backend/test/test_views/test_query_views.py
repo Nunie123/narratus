@@ -50,7 +50,7 @@ class UserViewTest(TestCase):
                                    , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
 
-    def post_to_edit_queries(self, label='conn42', raw_sql='select * from table'
+    def post_to_create_queries(self, label='conn42', raw_sql='select * from table'
                                  , token_type='admin'):
         if token_type == 'writer':
             token = self.writer_token
@@ -59,7 +59,7 @@ class UserViewTest(TestCase):
         else:
             token = self.admin_token
         data = dict(label=label, raw_sql=raw_sql)
-        response = self.client.post('/api/edit_query', data=json.dumps(data), content_type='application/json'
+        response = self.client.post('/api/create_query', data=json.dumps(data), content_type='application/json'
                                     , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
 
@@ -107,7 +107,7 @@ class UserViewTest(TestCase):
     def test_create_query_with_valid_data(self):
         with db.session.no_autoflush:
             label = 'my query'
-            response = self.post_to_edit_queries(label=label)
+            response = self.post_to_create_queries(label=label)
             response_dict = json.loads(response.data)
 
             query = SqlQuery.query.filter(SqlQuery.label == label).first()
@@ -118,7 +118,7 @@ class UserViewTest(TestCase):
     def test_create_query_with_invalid_data(self):
         with db.session.no_autoflush:
             label = ''
-            response = self.post_to_edit_queries(label=label)
+            response = self.post_to_create_queries(label=label)
             response_dict = json.loads(response.data)
 
             query = SqlQuery.query.filter(SqlQuery.label == label).first()
@@ -129,7 +129,7 @@ class UserViewTest(TestCase):
     def test_create_query_requires_writer_privileges(self):
         with db.session.no_autoflush:
             label = 'my_query'
-            response = self.post_to_edit_queries(label=label, token_type='viewer')
+            response = self.post_to_create_queries(label=label, token_type='viewer')
             response_dict = json.loads(response.data)
 
             query = SqlQuery.query.filter(SqlQuery.label == label).first()

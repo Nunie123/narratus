@@ -155,6 +155,11 @@ class User(db.Model):
     def __repr__(self):
         return '<User {}>'.format(self.username)
 
+# returns personal usergroup
+    def get_personal_usergroup(self):
+        usergroup = Usergroup.query.filter(Usergroup.label == self.username).first()
+        return usergroup
+
 
 class Usergroup(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -165,10 +170,12 @@ class Usergroup(db.Model):
     def validate_label(self, key, label):
         if not label:
             raise AssertionError('No label provided')
+        if not isinstance(label, str):
+            raise AssertionError('Label must be string')
         if Usergroup.query.filter(func.lower(Usergroup.label) == func.lower(label)).first():
             raise AssertionError('Provided label is already in use')
 
-        return label
+        return label.lower()
 
     @validates('members')
     def validate_members(self, key, members):
@@ -201,7 +208,7 @@ class Usergroup(db.Model):
     @validates('reports')
     def validate_reports(self, key, reports):
         if not isinstance(reports, Report):
-            raise AssertionError('Provided chart is not recognized')
+            raise AssertionError('Provided report is not recognized')
 
         return reports
 
@@ -260,10 +267,12 @@ class Connection(db.Model):
     def validate_label(self, key, label):
         if not label:
             raise AssertionError('No label provided')
+        if not isinstance(label, str):
+            raise AssertionError('Label must be string')
         if Usergroup.query.filter(func.lower(Usergroup.label) == func.lower(label)).first():
             raise AssertionError('Provided label is already in use')
 
-        return label
+        return label.lower()
 
     @validates('db_type')
     def validate_db_type(self, key, db_type):
@@ -446,11 +455,11 @@ class Chart(db.Model):
         return label
 
     @validates('type')
-    def validate_raw_sql(self, key, type):
+    def validate_type(self, key, type):
         if not type:
-            raise AssertionError('No chart_type provided')
+            raise AssertionError('No chart type provided')
         if not isinstance(type, str):
-            raise AssertionError('chart_type must be a string')
+            raise AssertionError('chart type must be a string')
 
         return type
 
@@ -589,22 +598,30 @@ publication_recipients = \
 
 class Publication(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    type = db.Column(db.String(128))
+    type = db.Column(db.Enum('email_attachment', 'email_embedded', 'dashboard'), default='dashboard')
     creator_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), index=True)
     frequency = db.Column(db.Enum('manual', 'days_of_week', 'day_of_month', 'daily', 'hourly', 'every_ten_min',
                                   name='pub_frequency'), default='manual')
-    monday = db.Column(db.String(15))
-    tuesday = db.Column(db.String(15))
-    wednesday = db.Column(db.String(15))
-    thursday = db.Column(db.String(15))
-    friday = db.Column(db.String(15))
-    saturday = db.Column(db.String(15))
-    sunday = db.Column(db.String(15))
+    monday = db.Column(db.Boolean(), default=False)
+    tuesday = db.Column(db.Boolean(), default=False)
+    wednesday = db.Column(db.Boolean(), default=False)
+    thursday = db.Column(db.Boolean(), default=False)
+    friday = db.Column(db.Boolean(), default=False)
+    saturday = db.Column(db.Boolean(), default=False)
+    sunday = db.Column(db.Boolean(), default=False)
     day_of_month = db.Column(db.Integer)
     pub_time = db.Column(db.Time)
     report_id = db.Column(db.Integer, db.ForeignKey('report.id'), index=True)
-    notification_or_attachment = db.Column(db.String(32))
     contact_ids = db.relationship("Contact", secondary=publication_recipients, backref="publications")
+
+    @validates('label')
+    def validate_label(self, key, label):
+        if not label:
+            raise AssertionError('No label provided')
+        if Usergroup.query.filter(func.lower(Usergroup.label) == func.lower(label)).first():
+            raise AssertionError('Provided label is already in use')
+
+        return label
 
     def get_dict(self):
         dict_format = {
@@ -620,9 +637,8 @@ class Publication(db.Model):
             'saturday': self.saturday,
             'sunday': self.sunday,
             'day_of_month': self.day_of_month,
-            'publication_time': self.pub_time,
+            'publication_time': self.pub_time.strftime('%l:%M%p'),
             'report_id': self.report_id,
-            'notification_or_attachment': self.notification_or_attachment,
             'recipients': self.get_recipients()
             }
         return dict_format
