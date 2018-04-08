@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, time
 import re
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.orm import validates
@@ -610,18 +610,45 @@ class Publication(db.Model):
     saturday = db.Column(db.Boolean(), default=False)
     sunday = db.Column(db.Boolean(), default=False)
     day_of_month = db.Column(db.Integer)
-    pub_time = db.Column(db.Time)
+    pub_time = db.Column(db.Time, default=time())
     report_id = db.Column(db.Integer, db.ForeignKey('report.id'), index=True)
-    contact_ids = db.relationship("Contact", secondary=publication_recipients, backref="publications")
+    # contact_ids = db.relationship("Contact", secondary=publication_recipients, backref="publications")
 
-    @validates('label')
-    def validate_label(self, key, label):
-        if not label:
-            raise AssertionError('No label provided')
-        if Usergroup.query.filter(func.lower(Usergroup.label) == func.lower(label)).first():
-            raise AssertionError('Provided label is already in use')
+    @validates('recipients')
+    def validate_recipients(self, key, contact):
+        if not contact:
+            raise AssertionError('No contact id provided')
+        if not isinstance(contact, Contact):
+            raise AssertionError('Contact ID not recognized')
 
-        return label
+        return contact
+
+    @validates('type')
+    def validate_type(self, key, type):
+        if not type:
+            raise AssertionError('Publication type not provided')
+        if type not in ['email_attachment', 'email_embedded', 'dashboard']:
+            raise AssertionError('Publication type not recognized')
+
+        return type
+
+    @validates('frequency')
+    def validate_type(self, key, frequency):
+        if not frequency:
+            raise AssertionError('Publication frequency not provided')
+        if frequency not in ['manual', 'days_of_week', 'day_of_month', 'daily', 'hourly', 'every_ten_min']:
+            raise AssertionError('Publication frequency not recognized')
+
+        return frequency
+
+    @validates('publication_report')
+    def validate_contact_ids(self, key, report):
+        if not report:
+            raise AssertionError('No report provided')
+        if not isinstance(report, Report):
+            raise AssertionError('Report ID not recognized')
+
+        return report
 
     def get_dict(self):
         dict_format = {
@@ -644,7 +671,7 @@ class Publication(db.Model):
         return dict_format
 
     def get_recipients(self):
-        return list(map(lambda obj: obj.get_dict(), self.contact_ids))
+        return list(map(lambda obj: obj.get_dict(), self.recipients))
 
     def __repr__(self):
         return '<Publication {} for report {}'.format(self.type, self.report_id)
@@ -659,6 +686,62 @@ class Contact(db.Model):
     creator_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), index=True)
     publication_ids = db.relationship("Publication", secondary=publication_recipients, backref="recipients")
 
+    @validates('first_name')
+    def validate_first_name(self, key, first_name):
+        if not first_name:
+            return None
+        if not isinstance(first_name, str):
+            raise AssertionError('First name must be string')
+        if len(first_name) > 50:
+            raise AssertionError('First names must be less than 50 characters')
+
+        return first_name
+
+    @validates('last_name')
+    def validate_last_name(self, key, last_name):
+        if not last_name:
+            return None
+        if not isinstance(last_name, str):
+            raise AssertionError('Last name must be string')
+        if len(last_name) > 50:
+            raise AssertionError('Last names must be less than 50 characters')
+
+        return last_name
+
+    @validates('email')
+    def validate_email(self, key, email):
+        if not email:
+            raise AssertionError('No email provided')
+        if not isinstance(email, str):
+            raise AssertionError('Email must be string')
+        if not re.match("[^@]+@[^@]+\.[^@]+", email):
+            raise AssertionError('Provided email is not an email address')
+
+        return email.lower()
+
+    @validates('public')
+    def validates_public(self, key, public):
+        if not public:
+            return None
+        if isinstance(public, bool):
+            return public
+        if isinstance(public, str):
+            if public.lower() == 'true':
+                return True
+            if public.lower() == 'false':
+                return False
+        else:
+            raise AssertionError('Public flag must be boolean value')
+
+    @validates('publications')
+    def validate_publications(self, key, publication):
+        if not publication:
+            raise AssertionError('No publication provided')
+        if not isinstance(publication, Publication):
+            raise AssertionError('Publication not recognized')
+
+        return publication
+
     def get_dict(self):
         dict_format = {
             'contact_id': self.id,
@@ -671,7 +754,7 @@ class Contact(db.Model):
         return dict_format
 
     def __repr__(self):
-        return '<Recipient {}, {}'.format(self.last_name, self.first_name)
+        return '<Recipient {}, {}>'.format(self.last_name, self.first_name)
 
 
 class TokenBlacklist(db.Model):

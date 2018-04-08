@@ -210,7 +210,7 @@ class UserViewTest(TestCase):
             assert len(report.usergroups) == 1
             assert report.usergroups[0].id == usergroup_id
 
-    def test_add_usergroup_to_report_with_bad_user_id(self):
+    def test_add_usergroup_to_report_with_bad_usergroup_id(self):
         report_id = 1234
         test_utils.create_report(report_id=report_id)
 

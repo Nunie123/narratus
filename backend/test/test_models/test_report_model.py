@@ -34,9 +34,10 @@ class UserModelTest(TestCase):
         assert report_dict['creator']['username'] == 'samson'
 
     def test_get_publications(self):
+        pub_type = 'dashboard'
         user = test_utils.create_user(username='samson')
         report = Report(label='report1', creator=user)
-        Publication(creator=user, type='email', publication_report=report)
+        Publication(creator=user, type=pub_type, publication_report=report)
         db.session.add(report)
         db.session.commit()
 
@@ -44,5 +45,5 @@ class UserModelTest(TestCase):
 
         assert isinstance(pub_list, list)
         assert isinstance(pub_list[0], dict)
-        assert pub_list[0]['type'] == 'email'
+        assert pub_list[0]['type'] == pub_type
         assert pub_list[0]['creator']['username'] == 'samson'

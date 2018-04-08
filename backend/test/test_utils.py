@@ -1,6 +1,7 @@
 import json
 import datetime
 from backend.app import db
+from backend.app import helper_functions as helpers
 from backend.app.models import User, Usergroup, Connection, SqlQuery, Chart, Report, Publication, Contact
 
 
@@ -136,7 +137,7 @@ def create_report(creator=None, label='test_report1', report_id=None, last_publi
     return report
 
 
-def create_publication(type='email'
+def create_publication(type='dashboard'
                        , frequency='daily'
                        , monday=False
                        , tuesday=False
@@ -153,18 +154,9 @@ def create_publication(type='email'
                        , report_label='TestReport1234'
                        ):
 
-    publication = Publication(type=type
-                               , frequency=frequency
-                               , monday=monday
-                               , tuesday=tuesday
-                               , wednesday=wednesday
-                               , thursday=thursday
-                               , friday=friday
-                               , saturday=saturday
-                               , sunday=sunday
-                               , day_of_month=day_of_month
-                               , pub_time=pub_time
-                               )
+    publication = Publication(type=type, frequency=frequency, monday=monday, tuesday=tuesday, wednesday=wednesday
+                              , thursday=thursday, friday=friday, saturday=saturday, sunday=sunday
+                              , day_of_month=day_of_month, pub_time=pub_time)
 
     report = create_report(label=report_label)
     publication.publication_report = report
@@ -186,16 +178,16 @@ def create_publication(type='email'
 
 
 def create_contact(contact_id=None, first_name='Bob', last_name='Dole'
-                   , email='bdole.example.com', public=True, creator=None):
+                   , email='bdole@example.com', public=True, creator=None):
     contact = Contact(first_name=first_name, last_name=last_name, email=email, public=public)
 
     if contact_id:
         contact.id = contact_id
 
     if creator:
-        contact.creator=creator
+        contact.creator = creator
     else:
-        contact.creator=create_user()
+        contact.creator = create_user()
 
     db.session.add(contact)
     db.session.commit()

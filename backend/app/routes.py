@@ -1,12 +1,9 @@
-import re
 from flask import request, jsonify
 from flask_jwt_extended import (
-    jwt_required, create_access_token, get_raw_jwt
-    , get_jwt_claims
+    jwt_required, create_access_token, get_raw_jwt, get_jwt_claims
 )
 from backend.app.models import (
-    User, Usergroup, Connection, SqlQuery, Chart, Report, Publication,
-    Contact, TokenBlacklist
+    User, Usergroup, Connection, SqlQuery, Chart, Report, Publication, Contact, TokenBlacklist
 )
 from backend.app import app, jwt, db
 from backend.app import helper_functions as helpers
@@ -45,8 +42,9 @@ def login():
     if not request.is_json:
         return jsonify(msg="Missing JSON in request", success=0), 400
 
-    username = request.json.get('username', None)
-    password = request.json.get('password', None)
+    request_data = request.get_json()
+    username = request_data.get('username', None)
+    password = request_data.get('password', None)
     user = helpers.get_user_from_username(username)
 
     if user is None or not user.check_password(password):
@@ -153,7 +151,8 @@ def delete_user():
     if not request.is_json:
         return jsonify(msg="Missing JSON in request", success=0), 400
 
-    user_id = request.json.get('user_id', None)
+    request_data = request.get_json()
+    user_id = request_data.get('user_id', None)
     user = helpers.get_record_from_id(User, user_id)
     requester = get_jwt_claims()
 
@@ -254,7 +253,8 @@ def delete_usergroup():
     if not request.is_json:
         return jsonify(msg="Missing JSON in request", success=0), 400
 
-    usergroup_id = request.json.get('usergroup_id', None)
+    request_data = request.get_json()
+    usergroup_id = request_data.get('usergroup_id', None)
     requester = get_jwt_claims()
     usergroup = Usergroup.query.filter(Usergroup.id == usergroup_id).first()
 
@@ -352,7 +352,8 @@ def delete_connection():
     if not request.is_json:
         return jsonify(msg="Missing JSON in request", success=0), 400
 
-    connection_id = request.json.get('connection_id', None)
+    request_data = request.get_json()
+    connection_id = request_data.get('connection_id', None)
     requester = get_jwt_claims()
     connection = helpers.get_record_from_id(Connection, connection_id)
 
@@ -445,7 +446,8 @@ def delete_query():
     if not request.is_json:
         return jsonify(msg="Missing JSON in request", success=0), 400
 
-    query_id = request.json.get('query_id', None)
+    request_data = request.get_json()
+    query_id = request_data.get('query_id', None)
     requester = get_jwt_claims()
     query = helpers.get_record_from_id(SqlQuery, query_id)
 
@@ -540,7 +542,8 @@ def delete_chart():
     if not request.is_json:
         return jsonify(msg="Missing JSON in request", success=0), 400
 
-    chart_id = request.json.get('chart_id', None)
+    request_data = request.get_json()
+    chart_id = request_data.get('chart_id', None)
     requester = get_jwt_claims()
     chart = helpers.get_record_from_id(Chart, chart_id)
 
@@ -635,7 +638,8 @@ def delete_report():
     if not request.is_json:
         return jsonify(msg="Missing JSON in request", success=0), 400
 
-    report_id = request.json.get('report_id', None)
+    request_data = request.get_json()
+    report_id = request_data.get('report_id', None)
     requester = get_jwt_claims()
     report = Report.query.filter(Report.id == report_id).first()
 
@@ -728,9 +732,10 @@ def delete_publication():
     if not request.is_json:
         return jsonify(msg="Missing JSON in request", success=0), 400
 
-    publication_id = request.json.get('publication_id', None)
+    request_data = request.get_json()
+    publication_id = request_data.get('publication_id', None)
     requester = get_jwt_claims()
-    publication = Publication.query.filter(Publication.id == publication_id).first()
+    publication = helpers.get_record_from_id(Publication, publication_id)
 
     if not publication_id:
         return jsonify(msg='Publication ID not provided.', success=0), 400
@@ -744,3 +749,97 @@ def delete_publication():
     db.session.delete(publication)
     db.session.commit()
     return jsonify(msg='Publication deleted.', success=1), 200
+
+
+@app.route('/api/get_all_contacts', methods=['GET'])
+@jwt_required
+def get_all_contacts():
+    requester = get_jwt_claims()
+
+    # must have write privileges see all contacts
+    if not helpers.requester_has_write_privileges(requester):
+        return jsonify(msg='Must have write privileges to view all contacts.', success=0), 401
+
+    raw_contacts = Contact.query.all()
+    contacts = list(map(lambda obj: obj.get_dict(), raw_contacts))
+    return jsonify(msg='Contacts provided.', contacts=contacts, success=1), 200
+
+
+@app.route('/api/create_contact', methods=['POST'])
+@jwt_required
+def create_contact():
+    if not request.is_json:
+        return jsonify(msg="Missing JSON in request", success=0), 400
+
+    request_data = request.get_json()
+
+    requester = get_jwt_claims()
+    requester_is_active = requester['is_active']
+
+    if not requester_is_active:
+        return jsonify(msg="Your account is no longer active.", success=0), 401
+
+    # read-only accounts can't create new contacts
+    if not helpers.requester_has_write_privileges(requester):
+        return jsonify(msg="User must have write privileges to create new contacts.", success=0), 401
+
+    try:
+        contact = helpers.create_contact_from_dict(request_data, requester['user_id'])
+        return jsonify(msg='Contact successfully created.', contact=contact.get_dict(), success=1), 200
+    except AssertionError as exception_message:
+        return jsonify(msg='Error: {}. Contact not created'.format(exception_message), success=0), 400
+
+
+@app.route('/api/edit_contact', methods=['PATCH'])
+@jwt_required
+def edit_contact():
+    if not request.is_json:
+        return jsonify(msg="Missing JSON in request", success=0), 400
+
+    request_data = request.get_json()
+    contact_id = request_data.get('contact_id')
+
+    requester = get_jwt_claims()
+    requester_is_active = requester['is_active']
+
+    contact = helpers.get_record_from_id(Contact, contact_id)
+
+    if not contact:
+        return jsonify(msg='Provided contact_id not found.', success=0), 400
+
+    if not requester_is_active:
+        return jsonify(msg="Your account is no longer active.", success=0), 401
+
+    if not helpers.requester_has_write_privileges(requester):
+        return jsonify(msg="User must have write privileges to edit contacts.", success=0), 401
+
+    try:
+        contact = helpers.edit_contact_from_dict(request_data)
+        return jsonify(msg='Contact successfully edited.', contact=contact.get_dict(), success=1), 200
+    except AssertionError as exception_message:
+        return jsonify(msg='Error: {}. Contact not edited'.format(exception_message), success=0), 400
+
+
+@app.route('/api/delete_contact', methods=['POST'])
+@jwt_required
+def delete_contact():
+    if not request.is_json:
+        return jsonify(msg="Missing JSON in request", success=0), 400
+
+    request_data = request.get_json()
+    contact_id = request_data.get('contact_id', None)
+    requester = get_jwt_claims()
+    contact = helpers.get_record_from_id(Contact, contact_id)
+
+    if not contact_id:
+        return jsonify(msg='Contact ID not provided.', success=0), 400
+    if not contact:
+        return jsonify(msg='Contact not recognized.', success=0), 400
+
+    # viewer users cannot delete contacts
+    if not helpers.requester_has_write_privileges(requester):
+        return jsonify(msg='Current user does not have permission to delete contacts.', success=0), 401
+
+    db.session.delete(contact)
+    db.session.commit()
+    return jsonify(msg='Contact deleted.', success=1), 200

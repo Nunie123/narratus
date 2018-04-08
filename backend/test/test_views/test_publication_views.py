@@ -50,8 +50,8 @@ class UserViewTest(TestCase):
                                    , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
 
-    def post_to_create_publication(self, label='conn42', publication_type='bar', parameters='test str', sql_query_id=None
-                                   , connection_id=None, token_type='admin', contact_ids=None):
+    def post_to_create_publication(self, report_id, type='dashboard', token_type='admin', contact_ids=None
+                                   , frequency='daily'):
         if token_type == 'writer':
             token = self.writer_token
         elif token_type == 'viewer':
@@ -59,19 +59,18 @@ class UserViewTest(TestCase):
         else:
             token = self.admin_token
 
-        data = dict(label=label, publication_type=publication_type, parameters=parameters, sql_query_id=sql_query_id
-                    , contact_ids=contact_ids)
+        data = dict(report_id=report_id, type=type, contact_ids=contact_ids, frequency=frequency)
         response = self.client.post('/api/create_publication', data=json.dumps(data), content_type='application/json'
                                     , headers={'Authorization': 'Bearer {}'.format(token)})
         return response
 
-    def patch_to_edit_publication(self, label='conn42', publication_type='bar', parameters='test str', sql_query_id=None
+    def patch_to_edit_publication(self, type=None, frequency=None
                                   , publication_id=None, token_type='admin', contact_ids=None):
         if token_type == 'writer':
             token = self.writer_token
         else:
             token = self.admin_token
-        data = dict(label=label, publication_type=publication_type, parameters=parameters, sql_query_id=sql_query_id
+        data = dict(type=type, frequency=frequency
                     , publication_id=publication_id, contact_ids=contact_ids)
         response = self.client.patch('/api/edit_publication', data=json.dumps(data), content_type='application/json'
                                      , headers={'Authorization': 'Bearer {}'.format(token)})
@@ -91,7 +90,6 @@ class UserViewTest(TestCase):
 
     def test_get_all_publications_returns_all_publications(self):
         test_utils.create_publication()
-        test_utils.create_publication()
 
         publication_count = len(Publication.query.all())
 
@@ -109,55 +107,35 @@ class UserViewTest(TestCase):
 
     def test_create_publication_with_valid_data(self):
         with db.session.no_autoflush:
-            sql_query_id = 111
-            test_utils.create_query(query_id=sql_query_id)
+            report_id = 111
+            test_utils.create_report(report_id=report_id)
 
-            connection_id = 222
-            test_utils.create_connection(connection_id=connection_id)
-
-            label = 'my publication'
-            response = self.post_to_create_publication(label=label, sql_query_id=sql_query_id, connection_id=connection_id)
+            response = self.post_to_create_publication(report_id=report_id)
             response_dict = json.loads(response.data)
 
-            publication = Publication.query.filter(Publication.label == label).first()
+            publication = Publication.query.filter(Publication.report_id == report_id).first()
 
         assert response.status_code == 200
         assert publication
 
     def test_create_publication_with_invalid_data(self):
-        with db.session.no_autoflush:
-            sql_query_id = 111
-            test_utils.create_query(query_id=sql_query_id)
+        report_id = 111
+        test_utils.create_report(report_id=report_id)
 
-            connection_id = 222
-            test_utils.create_connection(connection_id=connection_id)
-
-            label = ''
-            response = self.post_to_create_publication(label=label, sql_query_id=sql_query_id, connection_id=connection_id)
-            response_dict = json.loads(response.data)
-
-            publication = Publication.query.filter(Publication.label == label).first()
+        frequency = ''
+        response = self.post_to_create_publication(frequency=frequency, report_id=report_id)
+        response_dict = json.loads(response.data)
 
         assert response.status_code == 400
-        assert not publication
 
     def test_create_publication_requires_writer_privileges(self):
-        with db.session.no_autoflush:
-            sql_query_id = 111
-            test_utils.create_query(query_id=sql_query_id)
+        report_id = 111
+        test_utils.create_report(report_id=report_id)
 
-            connection_id = 222
-            test_utils.create_connection(connection_id=connection_id)
-
-            label = 'my publication'
-            response = self.post_to_create_publication(label=label, sql_query_id=sql_query_id, connection_id=connection_id
-                                                , token_type='viewer')
-            response_dict = json.loads(response.data)
-
-            publication = Publication.query.filter(Publication.label == label).first()
+        response = self.post_to_create_publication(token_type='viewer', report_id=report_id)
+        response_dict = json.loads(response.data)
 
         assert response.status_code == 401
-        assert not publication
 
     def test_edit_label_with_bad_publication_id(self):
         conn_id = 999999
@@ -169,31 +147,33 @@ class UserViewTest(TestCase):
         assert not publication
 
     def test_add_contact_to_publication(self):
-        with db.session.no_autoflush:
-            contact_id = 42
-            contact = test_utils.create_contact(contact_id=contact_id)
+        contact_id = 42
+        contact = test_utils.create_contact(contact_id=contact_id)
 
-            publication_id = 1234
-            test_utils.create_publication(publication_id=publication_id, report_label='report1111')
+        report_id = 99
+        test_utils.create_report(report_id=report_id)
 
-            response = self.patch_to_edit_publication(publication_id=publication_id, contact_ids=[contact_id])
-
-            publication = helpers.get_record_from_id(Publication, publication_id)
-
-            assert response.status_code == 200
-            assert len(publication.recipients) == 1
-            assert publication.recipients[0].id == contact_id
-
-    def test_add_usergroup_to_publication_with_bad_user_id(self):
         publication_id = 1234
-        test_utils.create_publication(publication_id=publication_id)
+        test_utils.create_publication(publication_id=publication_id, report_label='report1111')
 
-        response = self.patch_to_edit_publication(publication_id=publication_id, contact_ids=[99999])
+        response = self.patch_to_edit_publication(publication_id=publication_id, contact_ids=[contact_id])
+
+        publication = helpers.get_record_from_id(Publication, publication_id)
+
+        assert response.status_code == 200
+        assert len(publication.recipients) == 1
+        assert publication.recipients[0].id == contact_id
+
+    def test_add_recipient_to_publication_with_bad_contact_id(self):
+        publication_id = 1234
+        publication = test_utils.create_publication(publication_id=publication_id, report_label='report1111')
+
+        response = self.patch_to_edit_publication(publication_id=publication_id, contact_ids=[9999])
 
         publication = helpers.get_record_from_id(Publication, publication_id)
 
         assert response.status_code == 400
-        assert not publication.usergroups
+        assert not publication.recipients
 
     def test_delete_publication_removes_publication(self):
         publication_id = 1234

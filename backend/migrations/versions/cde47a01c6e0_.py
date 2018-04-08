@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: 234822c673ff
+Revision ID: cde47a01c6e0
 Revises: 
-Create Date: 2018-03-20 23:50:00.531580
+Create Date: 2018-04-06 08:59:41.349411
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '234822c673ff'
+revision = 'cde47a01c6e0'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -121,20 +121,19 @@ def upgrade():
     )
     op.create_table('publication',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('type', sa.String(length=128), nullable=True),
+    sa.Column('type', sa.Enum('email_attachment', 'email_embedded', 'dashboard'), nullable=True),
     sa.Column('creator_user_id', sa.Integer(), nullable=True),
     sa.Column('frequency', sa.Enum('manual', 'days_of_week', 'day_of_month', 'daily', 'hourly', 'every_ten_min', name='pub_frequency'), nullable=True),
-    sa.Column('monday', sa.String(length=15), nullable=True),
-    sa.Column('tuesday', sa.String(length=15), nullable=True),
-    sa.Column('wednesday', sa.String(length=15), nullable=True),
-    sa.Column('thursday', sa.String(length=15), nullable=True),
-    sa.Column('friday', sa.String(length=15), nullable=True),
-    sa.Column('saturday', sa.String(length=15), nullable=True),
-    sa.Column('sunday', sa.String(length=15), nullable=True),
+    sa.Column('monday', sa.Boolean(), nullable=True),
+    sa.Column('tuesday', sa.Boolean(), nullable=True),
+    sa.Column('wednesday', sa.Boolean(), nullable=True),
+    sa.Column('thursday', sa.Boolean(), nullable=True),
+    sa.Column('friday', sa.Boolean(), nullable=True),
+    sa.Column('saturday', sa.Boolean(), nullable=True),
+    sa.Column('sunday', sa.Boolean(), nullable=True),
     sa.Column('day_of_month', sa.Integer(), nullable=True),
     sa.Column('pub_time', sa.Time(), nullable=True),
     sa.Column('report_id', sa.Integer(), nullable=True),
-    sa.Column('notification_or_attachment', sa.String(length=32), nullable=True),
     sa.ForeignKeyConstraint(['creator_user_id'], ['user.id'], ),
     sa.ForeignKeyConstraint(['report_id'], ['report.id'], ),
     sa.PrimaryKeyConstraint('id')

@@ -1,3 +1,4 @@
+import datetime
 from backend.app import models
 from backend.app import db
 
@@ -395,16 +396,21 @@ def create_publication_from_dict(publication_dict, creator_id):
                                      , saturday=publication_dict.get('saturday')
                                      , sunday=publication_dict.get('sunday')
                                      , day_of_month=publication_dict.get('day_of_month')
-                                     , pub_time=publication_dict.get('pub_time')
                                      , report_id=publication_dict.get('report_id')
                                      , creator_user_id=creator_id
                                      )
+    pub_time_raw = publication_dict.get('pub_time')
+    if pub_time_raw:
+        pub_time = datetime.time(pub_time_raw[:2], pub_time_raw[-2:])
+        publication.pub_time = pub_time
 
     contact_ids = publication_dict.get('contact_ids', [])
     if contact_ids:
         for contact_id in contact_ids:
             contact = get_record_from_id(models.Contact, contact_id)
             publication.recipients.append(contact)
+    else:
+        publication.recipients = []
 
     db.session.add(publication)
     db.session.commit()
@@ -446,7 +452,45 @@ def edit_publication_from_dict(publication_dict):
         publication.recipients = []
     for contact_id in contact_ids:
         contact = get_record_from_id(models.Contact, contact_id)
-        publication.recipients.append(contact)
+        if contact:
+            publication.recipients.append(contact)
+        else:
+            raise AssertionError('Contact id not recognized')
 
     db.session.commit()
     return publication
+
+
+def create_contact_from_dict(contact_dict, creator_id):
+    contact = models.Contact(first_name=contact_dict.get('first_name')
+                             , last_name=contact_dict.get('last_name')
+                             , email=contact_dict.get('email')
+                             , public=contact_dict.get('public')
+                             , creator_user_id=creator_id
+                             )
+
+    db.session.add(contact)
+    db.session.commit()
+    return contact
+
+
+def edit_contact_from_dict(contact_dict):
+    contact = get_record_from_id(models.Contact, contact_dict.get('contact_id'))
+
+    if not contact:
+        raise AssertionError('contact_id not found')
+
+    if contact_dict.get('first_name'):
+        contact.first_name = contact_dict.get('first_name')
+
+    if contact_dict.get('last_name'):
+        contact.last_name = contact_dict.get('last_name')
+
+    if contact_dict.get('email'):
+        contact.email = contact_dict.get('email')
+
+    if contact_dict.get('public'):
+        contact.public = contact_dict.get('public')
+
+    db.session.commit()
+    return contact
