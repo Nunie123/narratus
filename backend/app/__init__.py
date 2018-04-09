@@ -20,6 +20,7 @@ app.config['JWT_BLACKLIST_TOKEN_CHECKS'] = ['access', 'refresh']
 jwt = JWTManager(app)
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
+aws_key_id = config.get('flask', 'aws_key_id')
 
 
 from backend.app import routes, models

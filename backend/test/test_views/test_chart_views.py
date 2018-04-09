@@ -7,7 +7,7 @@ from backend.app import db, app
 from backend.app import helper_functions as helpers
 
 
-class UserViewTest(TestCase):
+class ChartViewTest(TestCase):
 
     def create_app(self):
         app = Flask(__name__)

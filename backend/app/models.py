@@ -3,8 +3,8 @@ import re
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.orm import validates
 from sqlalchemy import func
-from backend.app import helper_functions as helpers
-from backend.app import db
+from backend.app import db, helper_functions as helpers
+from backend.app.encrypt import encrypt_with_aws, decrypt_with_aws
 
 user_perms = db.Table('user_perms',
                       db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
@@ -317,7 +317,7 @@ class Connection(db.Model):
         if not isinstance(password, str):
             raise AssertionError('Provided password not valid')
 
-        return password
+        return encrypt_with_aws(password)
 
     @validates('database_name')
     def validate_database_name(self, key, database_name):
@@ -350,7 +350,7 @@ class Connection(db.Model):
             'host': self.host,
             'port': self.port,
             'username': self.username,
-            'password': self.password,
+            'password': decrypt_with_aws(self.password) if self.password else self.password,
             'db_name': self.database_name,
             'creator': self.creator.get_dict(),
             }
