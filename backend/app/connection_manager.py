@@ -36,7 +36,8 @@ def create_connection(conn):
 
 def test_connection(conn):
     try:
-        create_connection(conn)
+        connection = create_connection(conn)
+        connection.close()
         return True
     except:
         return False

@@ -1,4 +1,3 @@
-import json
 from flask import Flask
 from flask_testing import TestCase
 from sqlalchemy import exc

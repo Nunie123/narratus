@@ -1,12 +1,11 @@
 from flask import request, jsonify
-from flask_jwt_extended import (
-    jwt_required, create_access_token, get_raw_jwt, get_jwt_claims
-)
+from flask_jwt_extended import jwt_required, create_access_token, get_raw_jwt, get_jwt_claims
+from sqlalchemy import exc
 from backend.app.models import (
     User, Usergroup, Connection, SqlQuery, Chart, Report, Publication, Contact, TokenBlacklist
 )
 from backend.app import app, jwt, db
-from backend.app import helper_functions as helpers
+from backend.app import helper_functions as helpers, connection_manager as cm
 
 
 @jwt.user_claims_loader
@@ -370,6 +369,29 @@ def delete_connection():
     db.session.delete(connection)
     db.session.commit()
     return jsonify(msg='Connection deleted.', success=1), 200
+
+
+@app.route('/api/test_connection', methods=['POST'])
+@jwt_required
+def test_connection():
+    if not request.is_json:
+        return jsonify(msg="Missing JSON in request", success=0), 400
+
+    request_data = request.get_json()
+    connection_id = request_data.get('connection_id', None)
+    requester = get_jwt_claims()
+    connection = helpers.get_record_from_id(Connection, connection_id)
+
+    # validate connection_id
+    if not connection_id:
+        return jsonify(msg='Connection ID not provided.', success=0), 400
+    if not connection:
+        return jsonify(msg='Connection not recognized.', success=0), 400
+
+    if cm.test_connection(connection):
+        return jsonify(msg='Successfully connected to database.', success=1), 200
+    else:
+        return jsonify(msg='Failed to connect to database.', success=0), 400
 
 
 @app.route('/api/get_all_queries', methods=['GET'])
@@ -843,3 +865,34 @@ def delete_contact():
     db.session.delete(contact)
     db.session.commit()
     return jsonify(msg='Contact deleted.', success=1), 200
+
+
+@app.route('/api/execute_sql', methods=['POST'])
+@jwt_required
+def execute_sql():
+    if not request.is_json:
+        return jsonify(msg="Missing JSON in request", success=0), 400
+
+    requester = get_jwt_claims()
+    request_data = request.get_json()
+    query_id = request_data.get('query_id', None)
+    query = helpers.get_record_from_id(SqlQuery, query_id)
+    connection_id = request_data.get('connection_id', None)
+    connection = helpers.get_record_from_id(Connection, connection_id)
+
+    raw_sql = query.raw_sql or request_data.get('raw_sql')
+
+    # viewer users cannot execute arbitrary sql
+    if not helpers.requester_has_write_privileges(requester):
+        return jsonify(msg='Current user does not have permission to execute query.', success=0), 401
+
+    if raw_sql:
+        try:
+            results = cm.execute_select_statement(conn=connection, raw_sql=raw_sql)
+            return jsonify(msg='Results provided.', results=results, success=1), 200
+        except AssertionError as e:
+            return jsonify(msg='Error: {}. No results'.format(e), success=0), 400
+        except exc.OperationalError as e:
+            return jsonify(msg='Error: {}. No results'.format(e), success=0), 400
+    else:
+        return jsonify(msg='No SQL provided.', success=0), 400

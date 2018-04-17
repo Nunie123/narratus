@@ -4,10 +4,10 @@ from flask_testing import TestCase
 from backend.app.models import Connection
 from backend.test import test_utils
 from backend.app import db, app
-from backend.app import helper_functions as helpers
+from backend.app import helper_functions as helpers, connection_manager as cm
 
 
-class UserViewTest(TestCase):
+class ConnectionViewTest(TestCase):
 
     def create_app(self):
         app = Flask(__name__)
@@ -40,6 +40,22 @@ class UserViewTest(TestCase):
     def tearDown(self):
         db.session.remove()
         db.drop_all()
+
+    def create_db_with_test_data(self, connection_id=1):
+        conn = test_utils.create_connection(label='test_conn', db_type='sqlite', host='/tmp'
+                                            , connection_id=connection_id)
+        connection = cm.create_connection(conn)
+        connection.execute('DROP TABLE IF EXISTS "TABLE1"')
+        connection.execute('CREATE TABLE "TABLE1" ('
+                           'id INTEGER NOT NULL,'
+                           'name VARCHAR, '
+                           'PRIMARY KEY (id));')
+
+        connection.execute('INSERT INTO "TABLE1" '
+                           '(id, name) '
+                           'VALUES (1,"raw1"), (2,"raw2"), (3,"raw3"), (4,"raw4")')
+        connection.close()
+        return conn
 
     def get_to_get_all_connections(self, token_type='admin'):
         if token_type == 'writer':
@@ -222,3 +238,24 @@ class UserViewTest(TestCase):
         connection = helpers.get_record_from_id(Connection, connection_id)
 
         assert connection
+
+    def test_test_connection_with_valid_data(self):
+        connection_id = 42
+        conn = self.create_db_with_test_data(connection_id=connection_id)
+
+        token = self.admin_token
+        data = dict(connection_id=connection_id)
+        response = self.client.post('/api/test_connection', data=json.dumps(data), content_type='application/json'
+                                    , headers={'Authorization': 'Bearer {}'.format(token)})
+
+        assert response.status_code == 200
+
+    def test_test_connection_with_bad_connection_id(self):
+        connection_id = 99999
+
+        token = self.admin_token
+        data = dict(connection_id=connection_id)
+        response = self.client.post('/api/test_connection', data=json.dumps(data), content_type='application/json'
+                                    , headers={'Authorization': 'Bearer {}'.format(token)})
+
+        assert response.status_code == 400
