@@ -598,7 +598,7 @@ publication_recipients = \
 
 class Publication(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    type = db.Column(db.Enum('email_attachment', 'email_embedded', 'dashboard'), default='dashboard')
+    type = db.Column(db.Enum('email_attachment', 'email_embedded', 'dashboard', name='pub_type'), default='dashboard')
     creator_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), index=True)
     frequency = db.Column(db.Enum('manual', 'days_of_week', 'day_of_month', 'daily', 'hourly', 'every_ten_min',
                                   name='pub_frequency'), default='manual')
