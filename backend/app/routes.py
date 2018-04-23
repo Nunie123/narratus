@@ -31,8 +31,10 @@ def check_if_token_in_blacklist(decrypted_token):
     return jti in blacklist
 
 
-@app.route('/', methods=['GET'])
+@app.route('/', methods=['GET', 'POST'])
 def test():
+    if request.method == 'POST':
+        return jsonify(msg='this is a POST request response with this data: {}'.format(request.data), success=1), 200
     return jsonify(msg='this is working', success=1), 200
 
 
