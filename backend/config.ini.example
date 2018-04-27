@@ -1,0 +1,6 @@
+[flask]
+secret_key = secret
+jwt_secret_key = alsosecret
+aws_key_id = arn:aws:kms:us-east-1:123456789876:key/abcd1234-12ab-12ab-12ab-123456789abc
+production_db_uri = postgresql://username:password@1234.1234.1234.1234/
+dev_db_uri = sqlite:////path/to/db/dev.db
